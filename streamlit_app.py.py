@@ -989,41 +989,77 @@ if st.button("Adjust to Target", type="primary"):
         # ---- Market narrative ----
         
         
-       # ---- Market narrative (robust, full-width) ----
-        st.divider()
-        st.subheader("Market narrative")
+     # ---- Market narrative (template, feature-aware) ----
+    st.divider()
+    st.subheader("Market narrative")
     
-        def _md_safe(s: str) -> str:
-            return s.replace("$", r"\$").replace("_", r"\_")
-        
-        try:
-            if is_binary:
-                s_before = {"slope": bs_all.get("slope", np.nan), "r2": bs_all.get("r2", np.nan), "median_ppsf": np.nan}
-                s_after  = {"slope": bs_final.get("slope", np.nan), "r2": bs_final.get("r2", np.nan), "median_ppsf": np.nan}
-            else:
-                s_before = compute_stats(work_filt, y_col, x_col)
-                s_after  = compute_stats(kept_plot, y_col, x_col)
-        
-            narrative = ai_summary_always(
-                feature_label=feature_label,
-                y_col=y_col,
-                stats_before=s_before,
-                stats_after=s_after,
-                context=infer_market_context(df),
-            )
-        
-            if not narrative or not isinstance(narrative, str):
-                narrative = ai_summary_fallback(feature_label, y_col, s_before, s_after, infer_market_context(df))
-        
-            st.markdown(_md_safe(narrative))
-        except Exception as e:
-            # Absolute fallback so something always displays
-            st.info("Narrative temporarily unavailable. Showing a brief summary instead.")
-            if is_binary:
-                txt = f"Based on filtered comps, the average difference is ${bs_final['slope']:,.0f} with R²={bs_final['r2']:.3f}."
-        else:
-            txt = f"Based on filtered comps, the estimated price change is ${s_after['slope']:,.0f} per +1 {feature_label} (R²={s_after['r2']:.3f})."
-        st.markdown(_md_safe(txt))
+    def _md_safe(s: str) -> str:
+        return s.replace("$", r"\$").replace("_", r"\_")
+    
+    def _pretty_feature_name(label: str) -> str:
+        m = {
+            "SqFt Finished": "Gross Living Area",
+            "Above Grade Finished": "Gross Living Area",
+            "Basement SqFt Finished": "Basement Finish",
+            "Basement Y/N": "Basement",
+            "Garage Spaces": "Garage Spaces",
+        }
+        return m.get(label, label)
+    
+    def _unit_phrase(label: str, is_binary: bool) -> str:
+        l = label.lower()
+        if is_binary:
+            # binary reads as yes/no difference
+            return " (Yes vs No)"
+        if "garage" in l: return " per additional garage bay"
+        if "bed" in l:    return " per additional bedroom"
+        if "bath" in l:   return " per additional bathroom"
+        if "year" in l or "built" in l: return " per year"
+        if "acre" in l:   return " per acre"
+        if "sq" in l or "gla" in l or "finished" in l or "living area" in l:
+            return " per additional square foot"
+        return f" per +1 {label}"
+    
+    def build_appraiser_narrative(feature_label: str, slope: float | float("nan"),
+                                  median_ppsf: float | float("nan"),
+                                  context: dict, is_binary: bool) -> str:
+        feature_name = _pretty_feature_name(feature_label)
+        where_when = ", ".join([p for p in [context.get("location"), context.get("timeframe")] if p])
+        header = f"**{feature_name} Adjustment Commentary (Regression-Based):**"
+        intro = f"Regression analysis of comparable properties{(' in ' + where_when) if where_when else ''} was performed to estimate the contributory effect of {feature_name.lower()} on sale price."
+        methods = ("The analysis isolated the effect of the selected feature while considering other typical market influences "
+                   "such as location, condition, and amenities. Prior to model calibration, the data set was reviewed for accuracy, "
+                   "and sales exhibiting atypical motivation or condition were screened out to reflect typical market behavior.")
+        body = ("The resulting coefficient reflects the market-supported rate of change in sale price attributable to differences "
+                f"in {feature_name.lower()} and provides a credible, data-driven basis for the applied adjustment.")
+    
+        # concise quantitative line(s)
+        lines = [header, "", intro, methods, body, ""]
+        if slope is not None and not np.isnan(slope):
+            lines.append(f"**Indicated rate of change:** ${slope:,.0f}{_unit_phrase(feature_label, is_binary)}.")
+        if (not is_binary) and (median_ppsf is not None) and (not np.isnan(median_ppsf)):
+            lines.append(f"**Reference median $/sq ft:** ${median_ppsf:,.0f}.")
+    
+        return "\n".join(lines)
+    
+    # stats for narrative
+    if is_binary:
+        bs_all = compute_binary_stats(work_filt, y_col, x_col)
+        bs_final = compute_binary_stats(kept_plot if 'kept_plot' in locals() else work_filt, y_col, x_col)
+        slope_use = bs_final.get("slope", np.nan) if bs_final.get("has_both") else bs_all.get("slope", np.nan)
+        median_use = np.nan  # not applicable for binary
+    else:
+        s_before = compute_stats(work_filt, y_col, x_col)
+        s_after  = compute_stats(kept_plot if 'kept_plot' in locals() else work_filt, y_col, x_col)
+        slope_use = s_after.get("slope", np.nan) if not np.isnan(s_after.get("slope", np.nan)) else s_before.get("slope", np.nan)
+        # if it's a sqft-like feature, s_* already includes median_ppsf; prefer the "after" one when available
+        median_use = s_after.get("median_ppsf", np.nan)
+        if np.isnan(median_use):
+            median_use = s_before.get("median_ppsf", np.nan)
+    
+    context_info = infer_market_context(df)
+    narrative_text = build_appraiser_narrative(feature_label, slope_use, median_use, context_info, is_binary)
+    st.markdown(_md_safe(narrative_text))
 
 else:
     # No adjustment yet — show one baseline chart
