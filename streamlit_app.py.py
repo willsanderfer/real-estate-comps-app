@@ -804,7 +804,7 @@ with st.expander("Map of filtered comps", expanded=False):
                 view_state = pdk.ViewState(
                     latitude=float(map_df["lat"].mean()),
                     longitude=float(map_df["lon"].mean()),
-                    zoom=10, pitch=0
+                    zoom=13.5, pitch=0
                 )
 
                 tooltip = {
