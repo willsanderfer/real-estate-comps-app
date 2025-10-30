@@ -1001,8 +1001,13 @@ if st.button("Adjust to Target", type="primary"):
             stats_after=s_after,
             context=infer_market_context(df)
         )
-        st.subheader("Market narrative")
-        st.write(narrative)
+        def _md_safe(s: str) -> str:
+            # escape chars that trigger markdown/latex
+            return s.replace("$", r"\$").replace("_", r"\_")
+
+            st.subheader("Market narrative")
+            st.markdown(_md_safe(narrative))
+
 else:
     # No adjustment yet — show one baseline chart
     c1, c2 = st.columns([2, 1], gap="large")
