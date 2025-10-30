@@ -1033,10 +1033,13 @@ if st.button("Adjust to Target", type="primary"):
         feature_name = _pretty_feature_name(feature_label)
         where_when = ", ".join([p for p in [context.get("location"), context.get("timeframe")] if p])
         header = f"**{feature_name} Adjustment Commentary (Regression-Based):**"
-        intro = f"Regression analysis of comparable properties{(' in ' + where_when) if where_when else ''} was performed to estimate the contributory effect of {feature_name.lower()} on sale price."
-        methods = ("The analysis isolated the effect of the selected feature while considering other typical market influences "
-                   "such as location, condition, and amenities. Prior to model calibration, the data set was reviewed for accuracy, "
-                   "and sales exhibiting atypical motivation or condition were screened out to reflect typical market behavior.")
+        intro = (f"The {feature_name.lower()} adjustment was developed using regression analysis applied "
+         "to a data set of comparable properties from within the subject’s competitive market area. "
+         f"The analysis isolated the contributory effect of {feature_name.lower()} on sale price while controlling for "
+         "other key variables such as location, condition, and amenities. ")
+        methods = ("Prior to model calibration, the data set was screened for accuracy, and statistical outliers or sales "
+           "exhibiting atypical motivation or condition were removed to ensure a reliable representation of market behavior.")
+
         body = ("The resulting coefficient reflects the market-supported rate of change in sale price attributable to differences "
                 f"in {feature_name.lower()} and provides a credible, data-driven basis for the applied adjustment.")
     
