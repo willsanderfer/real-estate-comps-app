@@ -1022,13 +1022,13 @@ if st.button("Adjust to Target", type="primary"):
             return " per additional square foot"
         return f" per +1 {label}"
     
-            def build_appraiser_narrative(
-            feature_label: str,
-            slope: Optional[float],
-            median_ppsf: Optional[float],
-            context: dict,
-            is_binary: bool
-        ) -> str:
+    def build_appraiser_narrative(
+    feature_label: str,
+    slope: Optional[float],
+    median_ppsf: Optional[float],
+    context: dict,
+    is_binary: bool
+) -> str:
 
         feature_name = _pretty_feature_name(feature_label)
         where_when = ", ".join([p for p in [context.get("location"), context.get("timeframe")] if p])
