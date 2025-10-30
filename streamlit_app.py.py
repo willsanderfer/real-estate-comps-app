@@ -987,26 +987,43 @@ if st.button("Adjust to Target", type="primary"):
         st.download_button("Adjusted (final) PNG", fig_bytes(final_fig), file_name="adjusted_final.png")
 
         # ---- Market narrative ----
-        if is_binary:
-            s_before = {"slope": bs_all.get("slope", np.nan), "r2": bs_all.get("r2", np.nan), "median_ppsf": np.nan}
-            s_after  = {"slope": bs_final.get("slope", np.nan), "r2": bs_final.get("r2", np.nan), "median_ppsf": np.nan}
-        else:
-            s_before = compute_stats(work_filt, y_col, x_col)
-            s_after  = compute_stats(kept_plot, y_col, x_col)
-
-        narrative = ai_summary_always(
-            feature_label=feature_label,
-            y_col=y_col,
-            stats_before=s_before,
-            stats_after=s_after,
-            context=infer_market_context(df)
-        )
+        
+        
+       # ---- Market narrative (robust, full-width) ----
+        st.divider()
+        st.subheader("Market narrative")
+    
         def _md_safe(s: str) -> str:
-            # escape chars that trigger markdown/latex
             return s.replace("$", r"\$").replace("_", r"\_")
-
-            st.subheader("Market narrative")
+        
+        try:
+            if is_binary:
+                s_before = {"slope": bs_all.get("slope", np.nan), "r2": bs_all.get("r2", np.nan), "median_ppsf": np.nan}
+                s_after  = {"slope": bs_final.get("slope", np.nan), "r2": bs_final.get("r2", np.nan), "median_ppsf": np.nan}
+            else:
+                s_before = compute_stats(work_filt, y_col, x_col)
+                s_after  = compute_stats(kept_plot, y_col, x_col)
+        
+            narrative = ai_summary_always(
+                feature_label=feature_label,
+                y_col=y_col,
+                stats_before=s_before,
+                stats_after=s_after,
+                context=infer_market_context(df),
+            )
+        
+            if not narrative or not isinstance(narrative, str):
+                narrative = ai_summary_fallback(feature_label, y_col, s_before, s_after, infer_market_context(df))
+        
             st.markdown(_md_safe(narrative))
+        except Exception as e:
+            # Absolute fallback so something always displays
+            st.info("Narrative temporarily unavailable. Showing a brief summary instead.")
+            if is_binary:
+                txt = f"Based on filtered comps, the average difference is ${bs_final['slope']:,.0f} with R²={bs_final['r2']:.3f}."
+        else:
+            txt = f"Based on filtered comps, the estimated price change is ${s_after['slope']:,.0f} per +1 {feature_label} (R²={s_after['r2']:.3f})."
+        st.markdown(_md_safe(txt))
 
 else:
     # No adjustment yet — show one baseline chart
