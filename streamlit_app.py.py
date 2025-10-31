@@ -890,7 +890,7 @@ if st.button("Adjust to Target", type="primary"):
         st.pyplot(orig_fig)
     st.caption("**Legend:** • Blue dot = Kept comps  • Black ◊ = Removed (to reach target)")
     with c2:
-        st.subheader("Original stats (filtered)")
+        st.subheader("Original stats")
         if is_binary:
             bs_all = compute_binary_stats(work_filt, y_col, x_col)
             if bs_all["has_both"]:
