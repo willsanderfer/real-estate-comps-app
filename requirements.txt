@@ -2,6 +2,11 @@ streamlit>=1.37
 pandas
 numpy
 matplotlib
-pydeck
+scikit-learn
+scipy
 openpyxl
 xlsxwriter
+rapidfuzz
+python-dateutil
+xlrd
+pillow
