@@ -661,12 +661,6 @@ def ai_summary_always(feature_label, y_col, stats_before, stats_after, context):
         return ai_summary_fallback(feature_label, y_col, stats_before, stats_after, context)
 
 # ===================== FILE LOADER =====================
-@st.cache_data(show_spinner=False)
-def load_df(uploaded):
-    name = getattr(uploaded, "name", "")
-    if name.lower().endswith((".csv", ".txt")):
-        return pd.read_csv(uploaded, sep=None, engine="python")
-    return pd.read_excel(uploaded)
 
 # ===================== UI HEADER =====================
 st.title("Comparable Adjustment Explorer")
@@ -680,7 +674,7 @@ if uploaded is None:
                     "3) Use the target tool to remove atypicals toward a target adjustment (if desired).")
     st.stop()
 
-df = load_df(uploaded)
+df = load_table(uploaded)
 df.columns = [c.strip() for c in df.columns]
 
 # Y locked
