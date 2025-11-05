@@ -15,6 +15,9 @@ from typing import Optional
 
 import io, csv
 
+st.set_page_config(page_title="Comparable Adjustment Explorer", page_icon="📈", layout="wide")
+
+
 @st.cache_data(show_spinner=False, ttl=3600)
 def load_table(uploaded_file) -> pd.DataFrame:
     name = uploaded_file.name.lower()
@@ -61,22 +64,8 @@ def load_table(uploaded_file) -> pd.DataFrame:
     )
     return df
 
-# ---- In your UI ----
-uploaded = st.file_uploader("Upload MLS export (CSV/TXT/XLSX)", type=["csv","txt","xlsx","xls"])
-if not uploaded:
-    st.info("Upload a comps file to begin.")
-    st.stop()
-
-try:
-    df = load_table(uploaded)
-except Exception as e:
-    st.error("Couldn't read the file. Try re-exporting as CSV (comma-delimited) or Excel.")
-    st.exception(e)
-    st.stop()
-
 
 # ===================== PAGE CONFIG =====================
-st.set_page_config(page_title="Comparable Adjustment Explorer", page_icon="📈", layout="wide")
 
 # ===================== CONSTANTS =====================
 Y_COL_CANDIDATES = ["Sold Price", "Sale Price", "SoldPrice", "Close Price"]
@@ -666,15 +655,23 @@ def ai_summary_always(feature_label, y_col, stats_before, stats_after, context):
 st.title("Comparable Adjustment Explorer")
 st.caption("For appraisers. Upload MLS exports, pick a feature, view graph-first results with clear stats.")
 
-uploaded = st.file_uploader("Upload data file", type=["csv","xlsx","xls"])
+uploaded = st.file_uploader("Upload MLS export (CSV/TXT/XLSX)", type=["csv","txt","xlsx","xls"])
 if uploaded is None:
     with st.expander("How to use (3 steps)", expanded=False):
-        st.markdown("1) Upload a CSV/XLSX with a Sold Price column.\n"
-                    "2) Choose a comparison feature (SqFt, Basement, Garage, etc.).\n"
-                    "3) Use the target tool to remove atypicals toward a target adjustment (if desired).")
+        st.markdown(
+            "1) Upload a CSV/XLSX/TXT with a Sold Price column.\n"
+            "2) Choose a comparison feature (SqFt, Basement, Garage, etc.).\n"
+            "3) (Optional) Adjust to a target and review results."
+        )
     st.stop()
 
-df = load_table(uploaded)
+try:
+    df = load_table(uploaded)
+except Exception as e:
+    st.error("Couldn't read the file. Try re-exporting as CSV (comma-delimited) or Excel.")
+    st.exception(e)
+    st.stop()
+
 df.columns = [c.strip() for c in df.columns]
 
 # Y locked
