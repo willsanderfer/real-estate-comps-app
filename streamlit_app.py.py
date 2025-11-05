@@ -13,6 +13,68 @@ import pydeck as pdk
 from typing import Optional
 
 
+import io, csv
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def load_table(uploaded_file) -> pd.DataFrame:
+    name = uploaded_file.name.lower()
+
+    # Excel straight-through
+    if name.endswith((".xlsx", ".xls")):
+        return pd.read_excel(uploaded_file)
+
+    # Bytes for sniffing enc/delim
+    raw = uploaded_file.getvalue()
+
+    # 1) detect encoding by attempting small decode
+    encodings = ["utf-8", "utf-8-sig", "cp1252", "latin-1"]
+    chosen_enc = None
+    sample_text = None
+    for enc in encodings:
+        try:
+            sample_text = raw[:20000].decode(enc)  # strict
+            chosen_enc = enc
+            break
+        except UnicodeDecodeError:
+            continue
+    if chosen_enc is None:
+        # final fallback: lossy decode so the user still sees something
+        chosen_enc = "latin-1"
+        sample_text = raw[:20000].decode(chosen_enc, errors="replace")
+
+    # 2) sniff delimiter (comma/tab/pipe/semicolon)
+    try:
+        dialect = csv.Sniffer().sniff(sample_text, delimiters=",\t|;")
+        sep = dialect.delimiter
+    except Exception:
+        # default to comma
+        sep = ","
+
+    # 3) read full file using detected encoding + delimiter
+    # Use python engine for flexible parsing; skip bad lines instead of crashing
+    text_io = io.StringIO(raw.decode(chosen_enc, errors="replace"))
+    df = pd.read_csv(
+        text_io,
+        sep=sep,
+        engine="python",
+        on_bad_lines="skip"
+    )
+    return df
+
+# ---- In your UI ----
+uploaded = st.file_uploader("Upload MLS export (CSV/TXT/XLSX)", type=["csv","txt","xlsx","xls"])
+if not uploaded:
+    st.info("Upload a comps file to begin.")
+    st.stop()
+
+try:
+    df = load_table(uploaded)
+except Exception as e:
+    st.error("Couldn't read the file. Try re-exporting as CSV (comma-delimited) or Excel.")
+    st.exception(e)
+    st.stop()
+
+
 # ===================== PAGE CONFIG =====================
 st.set_page_config(page_title="Comparable Adjustment Explorer", page_icon="📈", layout="wide")
 
