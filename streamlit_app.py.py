@@ -356,7 +356,7 @@ def key_takeaways_time(pct_per_month, dollar_per_month, r2, n):
         direction = "increasing" if pct_per_month >= 0 else "declining"
         bullets.append(f"Market trend is {direction} at {pct_per_month:.2f}% per month.")
     if not np.isnan(dollar_per_month):
-        bullets.append(f"Equivalent dollar trend is ${dollar_per_month:,.0f} per month.")
+        bullets.append(f"Equivalent dollar trend is ${dollar_per_month:,.2f} per month.")
     if not np.isnan(r2):
         strength = "weak" if r2 < 0.2 else "moderate" if r2 < 0.5 else "strong"
         bullets.append(f"Fit quality is {strength} (R²={r2:.2f}).")
@@ -370,7 +370,7 @@ def plain_english_time(pct_per_month, dollar_per_month):
     if not np.isnan(pct_per_month):
         parts.append(f"{pct_per_month:.2f}% per month")
     if not np.isnan(dollar_per_month):
-        parts.append(f"${dollar_per_month:,.0f} per month")
+        parts.append(f"${dollar_per_month:,.2f} per month")
     if len(parts) == 2:
         return "Estimated market time adjustment is " + parts[0] + " (~" + parts[1] + ")."
     return "Estimated market time adjustment is " + parts[0]
@@ -447,7 +447,7 @@ def make_scatter_figure(
         m, b, _ = regression_slope(x_true, y)
         xline = np.linspace(np.nanmin(x_true), np.nanmax(x_true), 200)
         long_phrase, short_suffix = unit_phrase_for_feature(title.split(" — ")[-1], is_binary=False)
-        ax.plot(xline, m*xline + b, linewidth=2, label=f"Fit: ${m:,.0f}{short_suffix}")
+        ax.plot(xline, m*xline + b, linewidth=2, label=f"Fit: ${m:,.2f}{short_suffix}")
 
     ax.set_title(title)
     ax.set_xlabel(x_col)
@@ -557,7 +557,7 @@ def ai_summary_openai(feature_label, y_col, stats_before, stats_after, context):
     long_phrase, _ = unit_phrase_for_feature(feature_label, is_binary=is_binary_feature)
     coeff_phrase = None
     if not np.isnan(slope_rounded_5) and not is_binary_feature:
-        coeff_phrase = f"${slope_rounded_5:,.0f} {long_phrase}"
+        coeff_phrase = f"${slope_rounded_5:,.2f} {long_phrase}"
 
     loc = context.get("location") or ""
     tf = context.get("timeframe") or ""
@@ -613,7 +613,7 @@ def ai_summary_fallback(feature_label, y_col, stats_before, stats_after, context
     long_phrase, _ = unit_phrase_for_feature(feature_label, is_binary=is_binary_feature)
     coeff_phrase = None
     if not np.isnan(slope_rounded_5) and not is_binary_feature:
-        coeff_phrase = f"${slope_rounded_5:,.0f} {long_phrase}"
+        coeff_phrase = f"${slope_rounded_5:,.2f} {long_phrase}"
 
     loc = context.get("location")
     tf = context.get("timeframe")
@@ -637,7 +637,7 @@ def ai_summary_fallback(feature_label, y_col, stats_before, stats_after, context
         lines.append("Model fit was assessed on the filtered data set.")
 
     if not np.isnan(mppsf_val):
-        lines.append(f"For reference, the median price per square foot was ${mppsf_val:,.0f} among usable observations.")
+        lines.append(f"For reference, the median price per square foot was ${mppsf_val:,.2f} among usable observations.")
 
     lines.append("Atypical sales and statistical outliers were removed to reflect typical market behavior.")
     lines.append("These results provide a market-supported basis for the applied adjustment.")
@@ -728,7 +728,7 @@ if mode == "Time adjustment":
     with right_time:
         st.subheader("Current stats")
         st.metric("% per month", f"{stats_time['pct_per_month']:.2f}%" if not np.isnan(stats_time['pct_per_month']) else "—")
-        st.metric("$/month", f"${stats_time['dollar_per_month']:,.0f}" if not np.isnan(stats_time['dollar_per_month']) else "—")
+        st.metric("$/month", f"${stats_time['dollar_per_month']:,.2f}" if not np.isnan(stats_time['dollar_per_month']) else "—")
         st.metric("R²", f"{stats_time['r2']:.3f}" if not np.isnan(stats_time['r2']) else "—")
         st.caption(f"Comps: {stats_time['n']}")
 
@@ -902,17 +902,17 @@ with right_admin:
     st.subheader("Current stats (filtered)")
     if is_binary:
         if bin_stats["has_both"]:
-            st.metric("Avg difference (Yes − No)", f"${bin_stats['slope']:,.0f}")
+            st.metric("Avg difference (Yes − No)", f"${bin_stats['slope']:,.2f}")
             st.metric("R²", f"{bin_stats['r2']:.3f}" if not np.isnan(bin_stats['r2']) else "—")
         else:
             st.metric("Avg difference (Yes − No)", "—")
             st.caption("Need both Yes and No to compute a difference.")
         st.caption(f"Comps: {bin_stats['n']}")
     else:
-        st.metric("Price per +1", f"${stats0['slope']:,.0f}" if not np.isnan(stats0['slope']) else "—")
+        st.metric("Price per +1", f"${stats0['slope']:,.2f}" if not np.isnan(stats0['slope']) else "—")
         st.metric("R²", f"{stats0['r2']:.3f}" if not np.isnan(stats0['r2']) else "—")
         if not np.isnan(stats0["median_ppsf"]):
-            st.metric("Median $/sq ft", f"${stats0['median_ppsf']:,.0f}")
+            st.metric("Median $/sq ft", f"${stats0['median_ppsf']:,.2f}")
         st.caption(f"Comps: {stats0['n']}")
 
 st.markdown("---")
@@ -947,19 +947,19 @@ if st.button("Adjust to Target", type="primary"):
         if is_binary:
             bs_all = compute_binary_stats(work_filt, y_col, x_col)
             if bs_all["has_both"]:
-                st.metric("Avg difference (Yes − No)", f"${bs_all['slope']:,.0f}")
+                st.metric("Avg difference (Yes − No)", f"${bs_all['slope']:,.2f}")
                 st.metric("R²", f"{bs_all['r2']:.3f}" if not np.isnan(bs_all['r2']) else "—")
-                st.caption(f"Means — No: {('$'+format(bs_all['mean_no'],',.0f')) if not np.isnan(bs_all['mean_no']) else '—'}   |   Yes: {('$'+format(bs_all['mean_yes'],',.0f')) if not np.isnan(bs_all['mean_yes']) else '—'}")
+                st.caption(f"Means — No: {('$'+format(bs_all['mean_no'],',.2f')) if not np.isnan(bs_all['mean_no']) else '—'}   |   Yes: {('$'+format(bs_all['mean_yes'],',.2f')) if not np.isnan(bs_all['mean_yes']) else '—'}")
             else:
                 st.metric("Avg difference (Yes − No)", "—")
                 st.caption("Need both Yes and No to compute a difference.")
             st.caption(f"Comps: {bs_all['n']}")
         else:
             s0 = compute_stats(work_filt, y_col, x_col)
-            st.metric("Price per +1", f"${s0['slope']:,.0f}" if not np.isnan(s0['slope']) else "—")
+            st.metric("Price per +1", f"${s0['slope']:,.2f}" if not np.isnan(s0['slope']) else "—")
             st.metric("R²", f"{s0['r2']:.3f}" if not np.isnan(s0['r2']) else "—")
             if not np.isnan(s0["median_ppsf"]):
-                st.metric("Median $/sq ft", f"${s0['median_ppsf']:,.0f}")
+                st.metric("Median $/sq ft", f"${s0['median_ppsf']:,.2f}")
             st.caption(f"Comps: {s0['n']}")
 
     st.divider()
@@ -986,7 +986,7 @@ if st.button("Adjust to Target", type="primary"):
             table_rows = {
                 "Comps kept": [len(kept_plot)],
                 "Removed": [len(removed_info)],
-                "Avg diff (Yes−No)": [f"${bs_final['slope']:,.0f}" if bs_final["has_both"] and not np.isnan(bs_final["slope"]) else "—"],
+                "Avg diff (Yes−No)": [f"${bs_final['slope']:,.2f}" if bs_final["has_both"] and not np.isnan(bs_final["slope"]) else "—"],
                 "R²": [f"{bs_final['r2']:.3f}" if bs_final["has_both"] and not np.isnan(bs_final["r2"]) else "—"],
             }
         else:
@@ -994,11 +994,11 @@ if st.button("Adjust to Target", type="primary"):
             table_rows = {
                 "Comps kept": [len(kept_plot)],
                 "Removed": [len(removed_info)],
-                "Price per +1": [f"${sA['slope']:,.0f}" if not np.isnan(sA['slope']) else "—"],
+                "Price per +1": [f"${sA['slope']:,.2f}" if not np.isnan(sA['slope']) else "—"],
                 "R²": [f"{sA['r2']:.3f}" if not np.isnan(sA['r2']) else "—"],
             }
             if not np.isnan(sA["median_ppsf"]):
-                table_rows["Median $/sq ft"] = [f"${sA['median_ppsf']:,.0f}"]
+                table_rows["Median $/sq ft"] = [f"${sA['median_ppsf']:,.2f}"]
         st.table(pd.DataFrame(table_rows))
 
         # ------- Downloads -------
@@ -1099,9 +1099,9 @@ if st.button("Adjust to Target", type="primary"):
         # concise quantitative line(s)
         lines = [header, "", intro, methods, body, ""]
         if slope is not None and not np.isnan(slope):
-            lines.append(f"**Indicated rate of change:** ${slope:,.0f}{_unit_phrase(feature_label, is_binary)}.")
+            lines.append(f"**Indicated rate of change:** ${slope:,.2f}{_unit_phrase(feature_label, is_binary)}.")
         if (not is_binary) and (median_ppsf is not None) and (not np.isnan(median_ppsf)):
-            lines.append(f"**Reference median $/sq ft:** ${median_ppsf:,.0f}.")
+            lines.append(f"**Reference median $/sq ft:** ${median_ppsf:,.2f}.")
     
         return "\n".join(lines)
     
@@ -1141,19 +1141,19 @@ else:
         if is_binary:
             bs = compute_binary_stats(work_filt, y_col, x_col)
             if bs["has_both"]:
-                st.metric("Avg difference (Yes − No)", f"${bs['slope']:,.0f}")
+                st.metric("Avg difference (Yes − No)", f"${bs['slope']:,.2f}")
                 st.metric("R²", f"{bs['r2']:.3f}" if not np.isnan(bs['r2']) else "—")
-                st.caption(f"Means — No: {('$'+format(bs['mean_no'],',.0f')) if not np.isnan(bs['mean_no']) else '—'}   |   Yes: {('$'+format(bs['mean_yes'],',.0f')) if not np.isnan(bs['mean_yes']) else '—'}")
+                st.caption(f"Means — No: {('$'+format(bs['mean_no'],',.2f')) if not np.isnan(bs['mean_no']) else '—'}   |   Yes: {('$'+format(bs['mean_yes'],',.2f')) if not np.isnan(bs['mean_yes']) else '—'}")
             else:
                 st.metric("Avg difference (Yes − No)", "—")
                 st.caption("Need both Yes and No to compute a difference.")
             st.caption(f"Comps: {bs['n']}")
         else:
             s = compute_stats(work_filt, y_col, x_col)
-            st.metric("Price per +1", f"${s['slope']:,.0f}" if not np.isnan(s['slope']) else "—")
+            st.metric("Price per +1", f"${s['slope']:,.2f}" if not np.isnan(s['slope']) else "—")
             st.metric("R²", f"{s['r2']:.3f}" if not np.isnan(s['r2']) else "—")
             if not np.isnan(s["median_ppsf"]):
-                st.metric("Median $/sq ft", f"${s['median_ppsf']:,.0f}")
+                st.metric("Median $/sq ft", f"${s['median_ppsf']:,.2f}")
             st.caption(f"Comps: {s['n']}")
 
     st.subheader("Downloads")
