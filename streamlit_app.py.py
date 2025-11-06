@@ -439,7 +439,7 @@ def make_scatter_figure(
         rx, ry = removed_xy
         if int_ticks is not None:
             import numpy as _np
-            rng3 = _np.random.default_rng(44)
+            rng3 = _np.random.default_rng(42)
             rx = _np.array(rx, dtype=float) + rng3.uniform(-jitter_width, jitter_width, size=len(rx))
         ax.scatter(rx, ry, facecolors='none', edgecolors='black', marker='D', s=90, label='Removed', zorder=3)
 
