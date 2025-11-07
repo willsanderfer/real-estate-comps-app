@@ -411,20 +411,25 @@ def filter_data(df_in: pd.DataFrame, y_col: str, x_col: str, date_col: str | Non
 def make_scatter_figure(
     df, y_col, x_col, title,
     int_ticks=None, jitter_width=0.08, xtick_labels=None,
-    removed_xy=None
+    removed_idx=None
 ):
-    fig, ax = plt.subplots(figsize=(7.8,5.2))
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(7.8, 5.2))
     if df.empty:
         ax.set_title(title + " (no data)")
         return fig
 
-    x_true = df[x_col].values
-    y = df[y_col].values
+    x_true = df[x_col].to_numpy()
+    y      = df[y_col].to_numpy()
 
-    # jitter for discrete
+    # 1) Build jitter ONCE for all points
     if int_ticks is not None and len(int_ticks) > 0:
-        rng = np.random.default_rng(42)
-        x_plot = x_true + rng.uniform(-jitter_width, jitter_width, size=len(x_true))
+        rng = np.random.default_rng(42)  # fixed seed
+        jitter = rng.uniform(-jitter_width, jitter_width, size=len(x_true))
+        x_plot = x_true.astype(float) + jitter
+
         ax.set_xticks(int_ticks)
         if xtick_labels:
             ax.set_xticklabels(xtick_labels)
@@ -433,21 +438,22 @@ def make_scatter_figure(
     else:
         x_plot = x_true
 
-    ax.scatter(x_plot, y, s=32, label="Comps")
+    # 2) Plot all comps
+    ax.scatter(x_plot, y, s=32, label="Comps", zorder=2)
 
-    if removed_xy is not None:
-        rx, ry = removed_xy
-        if int_ticks is not None:
-            import numpy as _np
-            rng3 = _np.random.default_rng(42)
-            rx = _np.array(rx, dtype=float) + rng3.uniform(-jitter_width, jitter_width, size=len(rx))
-        ax.scatter(rx, ry, facecolors='none', edgecolors='black', marker='D', s=90, label='Removed', zorder=3)
+    # 3) Reuse EXACT SAME jitter for removed rows
+    if removed_idx is not None and len(removed_idx) > 0:
+        rx_plot = x_plot[removed_idx]
+        ry      = y[removed_idx]
+        ax.scatter(rx_plot, ry, facecolors="none", edgecolors="black",
+                   marker="D", s=90, label="Removed", zorder=3)
 
+    # 4) Regression line (computed on true x, not jittered)
     if len(x_true) >= 2 and np.nanstd(x_true) > 0:
         m, b, _ = regression_slope(x_true, y)
         xline = np.linspace(np.nanmin(x_true), np.nanmax(x_true), 200)
-        long_phrase, short_suffix = unit_phrase_for_feature(title.split(" — ")[-1], is_binary=False)
-        ax.plot(xline, m*xline + b, linewidth=2, label=f"Fit: ${m:,.2f}{short_suffix}")
+        _, short_suffix = unit_phrase_for_feature(title.split(" — ")[-1], is_binary=False)
+        ax.plot(xline, m * xline + b, linewidth=2, label=f"Fit: ${m:,.2f}{short_suffix}")
 
     ax.set_title(title)
     ax.set_xlabel(x_col)
@@ -456,6 +462,7 @@ def make_scatter_figure(
     ax.grid(axis="y", linestyle="--", color="#e5e5e5", linewidth=0.8)
     fig.tight_layout()
     return fig
+
 
 # ===================== GREEDY REMOVER (Admin) =====================
 def greedy_remove_toward_target(df: pd.DataFrame, y_col: str, x_col: str, target_slope: float, max_removals: int):
@@ -931,15 +938,27 @@ if st.button("Adjust to Target", type="primary"):
 
     c1, c2 = st.columns([2, 1], gap="large")
 
+
+    # --- indices of removed rows relative to work_filt (the filtered dataset used for plotting)
+if removed_df.empty:
+    removed_idx = np.array([], dtype=int)
+else:
+    removed_ids = set(removed_df["orig_index"].astype(int).tolist())  # original row ids
+    removed_idx = np.where(work_filt["index"].astype(int).isin(removed_ids))[0]
+
     # --- Original (FILTERED) ---
     with c1:
         orig_fig = make_scatter_figure(
-            work_filt[[x_col, y_col]], y_col, x_col,
-            f"Original comps — {feature_label} (filtered; shows removals if applied)",
-            int_ticks=( [0,1] if is_binary else (np.sort(work_filt[x_col].round().astype(int).unique()) if looks_discrete_integer(work_filt[x_col]) else None) ),
-            xtick_labels=(["No","Yes"] if is_binary else None),
-            removed_xy=(_rx, _ry) if len(_rx) > 0 else None
-        )
+        work_filt[[x_col, y_col]], y_col, x_col,
+        f"Original comps — {feature_label} (filtered; shows removals if applied)",
+        int_ticks=([0,1] if is_binary else (
+        np.sort(work_filt[x_col].round().astype(int).unique())
+        if looks_discrete_integer(work_filt[x_col]) else None
+    )),
+    xtick_labels=(["No","Yes"] if is_binary else None),
+    removed_idx=removed_idx
+)
+
         st.pyplot(orig_fig)
     st.caption("**Legend:** • Blue dot = Kept comps  • Black ◊ = Removed (to reach target)")
     with c2:
