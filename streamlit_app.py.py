@@ -925,223 +925,223 @@ with right_admin:
 st.markdown("---")
 
 # ===================== MAIN ACTION =====================
-if st.button("Adjust to Target", type="primary"):
-    kept_df, removed_info, _ = greedy_remove_toward_target(
-        work_used[['index', y_col, x_col]].copy(), y_col, x_col, target, max_removals
-    )
-    kept_plot = kept_df[[x_col, y_col]].copy()
-
-    # Overlays for removed
-    removed_df = pd.DataFrame(removed_info)
-    _rx = removed_df.get(x_col, pd.Series([], dtype=float)).values if not removed_df.empty else []
-    _ry = removed_df.get(y_col, pd.Series([], dtype=float)).values if not removed_df.empty else []
-
-    c1, c2 = st.columns([2, 1], gap="large")
-
-
-    # --- indices of removed rows relative to work_filt (the filtered dataset used for plotting)
-if removed_df.empty:
-    removed_idx = np.array([], dtype=int)
-else:
-    removed_ids = set(removed_df["orig_index"].astype(int).tolist())  # original row ids
-    removed_idx = np.where(work_filt["index"].astype(int).isin(removed_ids))[0]
-
-    # --- Original (FILTERED) ---
-    with c1:
-        orig_fig = make_scatter_figure(
-        work_filt[[x_col, y_col]], y_col, x_col,
-        f"Original comps — {feature_label} (filtered; shows removals if applied)",
-        int_ticks=([0,1] if is_binary else (
-        np.sort(work_filt[x_col].round().astype(int).unique())
-        if looks_discrete_integer(work_filt[x_col]) else None
-    )),
-    xtick_labels=(["No","Yes"] if is_binary else None),
-    removed_idx=removed_idx
-)
-
-        st.pyplot(orig_fig)
-    st.caption("**Legend:** • Blue dot = Kept comps  • Black ◊ = Removed (to reach target)")
-    with c2:
-        st.subheader("Original stats")
-        if is_binary:
-            bs_all = compute_binary_stats(work_filt, y_col, x_col)
-            if bs_all["has_both"]:
-                st.metric("Avg difference (Yes − No)", f"${bs_all['slope']:,.2f}")
-                st.metric("R²", f"{bs_all['r2']:.3f}" if not np.isnan(bs_all['r2']) else "—")
-                st.caption(f"Means — No: {('$'+format(bs_all['mean_no'],',.2f')) if not np.isnan(bs_all['mean_no']) else '—'}   |   Yes: {('$'+format(bs_all['mean_yes'],',.2f')) if not np.isnan(bs_all['mean_yes']) else '—'}")
-            else:
-                st.metric("Avg difference (Yes − No)", "—")
-                st.caption("Need both Yes and No to compute a difference.")
-            st.caption(f"Comps: {bs_all['n']}")
-        else:
-            s0 = compute_stats(work_filt, y_col, x_col)
-            st.metric("Price per +1", f"${s0['slope']:,.2f}" if not np.isnan(s0['slope']) else "—")
-            st.metric("R²", f"{s0['r2']:.3f}" if not np.isnan(s0['r2']) else "—")
-            if not np.isnan(s0["median_ppsf"]):
-                st.metric("Median $/sq ft", f"${s0['median_ppsf']:,.2f}")
-            st.caption(f"Comps: {s0['n']}")
-
-    st.divider()
-
-    # --- Adjusted (FINAL) ---
-    with c1:
+    if st.button("Adjust to Target", type="primary"):
+        kept_df, removed_info, _ = greedy_remove_toward_target(
+            work_used[['index', y_col, x_col]].copy(), y_col, x_col, target, max_removals
+        )
+        kept_plot = kept_df[[x_col, y_col]].copy()
+    
+        # Overlays for removed
+        removed_df = pd.DataFrame(removed_info)
         _rx = removed_df.get(x_col, pd.Series([], dtype=float)).values if not removed_df.empty else []
         _ry = removed_df.get(y_col, pd.Series([], dtype=float)).values if not removed_df.empty else []
-        final_fig = make_scatter_figure(
-        kept_plot, y_col, x_col, f"Adjusted comps — {feature_label}",
-        int_ticks=([0,1] if is_binary else (
-        np.sort(kept_plot[x_col].round().astype(int).unique())
-        if looks_discrete_integer(kept_plot[x_col]) else None)),
+    
+        c1, c2 = st.columns([2, 1], gap="large")
+    
+    
+        # --- indices of removed rows relative to work_filt (the filtered dataset used for plotting)
+    if removed_df.empty:
+        removed_idx = np.array([], dtype=int)
+    else:
+        removed_ids = set(removed_df["orig_index"].astype(int).tolist())  # original row ids
+        removed_idx = np.where(work_filt["index"].astype(int).isin(removed_ids))[0]
+    
+        # --- Original (FILTERED) ---
+        with c1:
+            orig_fig = make_scatter_figure(
+            work_filt[[x_col, y_col]], y_col, x_col,
+            f"Original comps — {feature_label} (filtered; shows removals if applied)",
+            int_ticks=([0,1] if is_binary else (
+            np.sort(work_filt[x_col].round().astype(int).unique())
+            if looks_discrete_integer(work_filt[x_col]) else None
+        )),
         xtick_labels=(["No","Yes"] if is_binary else None),
-        removed_xy=None  # <— no removed markers on the final chart
-)
-
-        st.pyplot(final_fig)
-    st.caption("**Legend:** • Blue dot = Kept comps  • Line = Fit")
-    with c2:
-        st.subheader("Final stats")
-        if is_binary:
-            bs_final = compute_binary_stats(kept_plot, y_col, x_col)
-            table_rows = {
-                "Comps kept": [len(kept_plot)],
-                "Removed": [len(removed_info)],
-                "Avg diff (Yes−No)": [f"${bs_final['slope']:,.2f}" if bs_final["has_both"] and not np.isnan(bs_final["slope"]) else "—"],
-                "R²": [f"{bs_final['r2']:.3f}" if bs_final["has_both"] and not np.isnan(bs_final["r2"]) else "—"],
+        removed_idx=removed_idx
+    )
+    
+            st.pyplot(orig_fig)
+        st.caption("**Legend:** • Blue dot = Kept comps  • Black ◊ = Removed (to reach target)")
+        with c2:
+            st.subheader("Original stats")
+            if is_binary:
+                bs_all = compute_binary_stats(work_filt, y_col, x_col)
+                if bs_all["has_both"]:
+                    st.metric("Avg difference (Yes − No)", f"${bs_all['slope']:,.2f}")
+                    st.metric("R²", f"{bs_all['r2']:.3f}" if not np.isnan(bs_all['r2']) else "—")
+                    st.caption(f"Means — No: {('$'+format(bs_all['mean_no'],',.2f')) if not np.isnan(bs_all['mean_no']) else '—'}   |   Yes: {('$'+format(bs_all['mean_yes'],',.2f')) if not np.isnan(bs_all['mean_yes']) else '—'}")
+                else:
+                    st.metric("Avg difference (Yes − No)", "—")
+                    st.caption("Need both Yes and No to compute a difference.")
+                st.caption(f"Comps: {bs_all['n']}")
+            else:
+                s0 = compute_stats(work_filt, y_col, x_col)
+                st.metric("Price per +1", f"${s0['slope']:,.2f}" if not np.isnan(s0['slope']) else "—")
+                st.metric("R²", f"{s0['r2']:.3f}" if not np.isnan(s0['r2']) else "—")
+                if not np.isnan(s0["median_ppsf"]):
+                    st.metric("Median $/sq ft", f"${s0['median_ppsf']:,.2f}")
+                st.caption(f"Comps: {s0['n']}")
+    
+        st.divider()
+    
+        # --- Adjusted (FINAL) ---
+        with c1:
+            _rx = removed_df.get(x_col, pd.Series([], dtype=float)).values if not removed_df.empty else []
+            _ry = removed_df.get(y_col, pd.Series([], dtype=float)).values if not removed_df.empty else []
+            final_fig = make_scatter_figure(
+            kept_plot, y_col, x_col, f"Adjusted comps — {feature_label}",
+            int_ticks=([0,1] if is_binary else (
+            np.sort(kept_plot[x_col].round().astype(int).unique())
+            if looks_discrete_integer(kept_plot[x_col]) else None)),
+            xtick_labels=(["No","Yes"] if is_binary else None),
+            removed_xy=None  # <— no removed markers on the final chart
+    )
+    
+            st.pyplot(final_fig)
+        st.caption("**Legend:** • Blue dot = Kept comps  • Line = Fit")
+        with c2:
+            st.subheader("Final stats")
+            if is_binary:
+                bs_final = compute_binary_stats(kept_plot, y_col, x_col)
+                table_rows = {
+                    "Comps kept": [len(kept_plot)],
+                    "Removed": [len(removed_info)],
+                    "Avg diff (Yes−No)": [f"${bs_final['slope']:,.2f}" if bs_final["has_both"] and not np.isnan(bs_final["slope"]) else "—"],
+                    "R²": [f"{bs_final['r2']:.3f}" if bs_final["has_both"] and not np.isnan(bs_final["r2"]) else "—"],
+                }
+            else:
+                sA = compute_stats(kept_plot, y_col, x_col)
+                table_rows = {
+                    "Comps kept": [len(kept_plot)],
+                    "Removed": [len(removed_info)],
+                    "Price per +1": [f"${sA['slope']:,.2f}" if not np.isnan(sA['slope']) else "—"],
+                    "R²": [f"{sA['r2']:.3f}" if not np.isnan(sA['r2']) else "—"],
+                }
+                if not np.isnan(sA["median_ppsf"]):
+                    table_rows["Median $/sq ft"] = [f"${sA['median_ppsf']:,.2f}"]
+            st.table(pd.DataFrame(table_rows))
+    
+            # ------- Downloads -------
+            kept_csv = kept_df[[x_col, y_col]].to_csv(index=False).encode()
+            removed_csv = removed_df.to_csv(index=False).encode()
+    
+            if is_binary:
+                bs_all = compute_binary_stats(work_filt, y_col, x_col)
+                bs_final = compute_binary_stats(kept_plot, y_col, x_col)
+                summary_df = pd.DataFrame([{
+                    "feature_label": feature_label,
+                    "mapped_feature_column": x_col,
+                    "original_diff_yes_minus_no": None if not bs_all["has_both"] or np.isnan(bs_all["slope"]) else float(bs_all["slope"]),
+                    "original_r2": None if not bs_all["has_both"] or np.isnan(bs_all["r2"]) else float(bs_all["r2"]),
+                    "target_slope": float(target),
+                    "final_diff_yes_minus_no": None if not bs_final["has_both"] or np.isnan(bs_final["slope"]) else float(bs_final["slope"]),
+                    "final_r2": None if not bs_final["has_both"] or np.isnan(bs_final["r2"]) else float(bs_final["r2"]),
+                    "removed_count": len(removed_info),
+                }])
+            else:
+                s0 = compute_stats(work_filt, y_col, x_col)
+                sA = compute_stats(kept_plot, y_col, x_col)
+                summary_df = pd.DataFrame([{
+                    "feature_label": feature_label,
+                    "mapped_feature_column": x_col,
+                    "original_slope": None if np.isnan(s0["slope"]) else float(s0["slope"]),
+                    "original_r2": None if np.isnan(s0["r2"]) else float(s0["r2"]),
+                    "target_slope": float(target),
+                    "final_slope": None if np.isnan(sA["slope"]) else float(sA["slope"]),
+                    "final_r2": None if np.isnan(sA["r2"]) else float(sA["r2"]),
+                    "original_median_ppsf": None if np.isnan(s0["median_ppsf"]) else float(s0["median_ppsf"]),
+                    "final_median_ppsf": None if np.isnan(sA["median_ppsf"]) else float(sA["median_ppsf"]),
+                    "removed_count": len(removed_info),
+                }])
+    
+            st.subheader("Downloads")
+            st.download_button("Kept comps CSV", kept_csv, file_name="kept_comps.csv")
+            st.download_button("Removed comps CSV", removed_csv, file_name="removed_rows.csv")
+            st.download_button("Summary CSV", summary_df.to_csv(index=False).encode(), file_name="adjustment_summary.csv")
+            st.download_button("Original chart PNG", fig_bytes(orig_fig), file_name="original.png")
+            st.download_button("Adjusted (final) PNG", fig_bytes(final_fig), file_name="adjusted_final.png")
+    
+            # ---- Market narrative ----
+            
+            
+         # ---- Market narrative (template, feature-aware) ----
+        st.divider()
+        st.subheader("Market narrative")
+        
+        def _md_safe(s: str) -> str:
+            return s.replace("$", r"\$").replace("_", r"\_")
+        
+        def _pretty_feature_name(label: str) -> str:
+            m = {
+                "SqFt Finished": "Gross Living Area",
+                "Above Grade Finished": "Gross Living Area",
+                "Basement SqFt Finished": "Basement Finish",
+                "Basement Y/N": "Basement",
+                "Garage Spaces": "Garage Spaces",
             }
-        else:
-            sA = compute_stats(kept_plot, y_col, x_col)
-            table_rows = {
-                "Comps kept": [len(kept_plot)],
-                "Removed": [len(removed_info)],
-                "Price per +1": [f"${sA['slope']:,.2f}" if not np.isnan(sA['slope']) else "—"],
-                "R²": [f"{sA['r2']:.3f}" if not np.isnan(sA['r2']) else "—"],
-            }
-            if not np.isnan(sA["median_ppsf"]):
-                table_rows["Median $/sq ft"] = [f"${sA['median_ppsf']:,.2f}"]
-        st.table(pd.DataFrame(table_rows))
-
-        # ------- Downloads -------
-        kept_csv = kept_df[[x_col, y_col]].to_csv(index=False).encode()
-        removed_csv = removed_df.to_csv(index=False).encode()
-
+            return m.get(label, label)
+        
+        def _unit_phrase(label: str, is_binary: bool) -> str:
+            l = label.lower()
+            if is_binary:
+                # binary reads as yes/no difference
+                return " (Yes vs No)"
+            if "garage" in l: return " per additional garage bay"
+            if "bed" in l:    return " per additional bedroom"
+            if "bath" in l:   return " per additional bathroom"
+            if "year" in l or "built" in l: return " per year"
+            if "acre" in l:   return " per acre"
+            if "sq" in l or "gla" in l or "finished" in l or "living area" in l:
+                return " per additional square foot"
+            return f" per +1 {label}"
+        
+        def build_appraiser_narrative(
+        feature_label: str,
+        slope: Optional[float],
+        median_ppsf: Optional[float],
+        context: dict,
+        is_binary: bool
+    ) -> str:
+    
+            feature_name = _pretty_feature_name(feature_label)
+            where_when = ", ".join([p for p in [context.get("location"), context.get("timeframe")] if p])
+            header = f"**{feature_name} Adjustment Commentary (Regression-Based):**"
+            intro = (f"The {feature_name.lower()} adjustment was developed using regression analysis applied "
+             "to a data set of comparable properties from within the subject’s competitive market area. "
+             f"The analysis isolated the contributory effect of {feature_name.lower()} on sale price while controlling for "
+             "other key variables such as location, condition, and amenities. ")
+            methods = ("Prior to model calibration, the data set was screened for accuracy, and statistical outliers or sales "
+               "exhibiting atypical motivation or condition were removed to ensure a reliable representation of market behavior.")
+    
+            body = ("The resulting coefficient reflects the market-supported rate of change in sale price attributable to differences "
+                    f"in {feature_name.lower()} and provides a credible, data-driven basis for the applied adjustment.")
+        
+            # concise quantitative line(s)
+            lines = [header, "", intro, methods, body, ""]
+            if slope is not None and not np.isnan(slope):
+                lines.append(f"**Indicated rate of change:** ${slope:,.2f}{_unit_phrase(feature_label, is_binary)}.")
+            if (not is_binary) and (median_ppsf is not None) and (not np.isnan(median_ppsf)):
+                lines.append(f"**Reference median $/sq ft:** ${median_ppsf:,.2f}.")
+        
+            return "\n".join(lines)
+        
+        # stats for narrative
         if is_binary:
             bs_all = compute_binary_stats(work_filt, y_col, x_col)
-            bs_final = compute_binary_stats(kept_plot, y_col, x_col)
-            summary_df = pd.DataFrame([{
-                "feature_label": feature_label,
-                "mapped_feature_column": x_col,
-                "original_diff_yes_minus_no": None if not bs_all["has_both"] or np.isnan(bs_all["slope"]) else float(bs_all["slope"]),
-                "original_r2": None if not bs_all["has_both"] or np.isnan(bs_all["r2"]) else float(bs_all["r2"]),
-                "target_slope": float(target),
-                "final_diff_yes_minus_no": None if not bs_final["has_both"] or np.isnan(bs_final["slope"]) else float(bs_final["slope"]),
-                "final_r2": None if not bs_final["has_both"] or np.isnan(bs_final["r2"]) else float(bs_final["r2"]),
-                "removed_count": len(removed_info),
-            }])
+            bs_final = compute_binary_stats(kept_plot if 'kept_plot' in locals() else work_filt, y_col, x_col)
+            slope_use = bs_final.get("slope", np.nan) if bs_final.get("has_both") else bs_all.get("slope", np.nan)
+            median_use = np.nan  # not applicable for binary
         else:
-            s0 = compute_stats(work_filt, y_col, x_col)
-            sA = compute_stats(kept_plot, y_col, x_col)
-            summary_df = pd.DataFrame([{
-                "feature_label": feature_label,
-                "mapped_feature_column": x_col,
-                "original_slope": None if np.isnan(s0["slope"]) else float(s0["slope"]),
-                "original_r2": None if np.isnan(s0["r2"]) else float(s0["r2"]),
-                "target_slope": float(target),
-                "final_slope": None if np.isnan(sA["slope"]) else float(sA["slope"]),
-                "final_r2": None if np.isnan(sA["r2"]) else float(sA["r2"]),
-                "original_median_ppsf": None if np.isnan(s0["median_ppsf"]) else float(s0["median_ppsf"]),
-                "final_median_ppsf": None if np.isnan(sA["median_ppsf"]) else float(sA["median_ppsf"]),
-                "removed_count": len(removed_info),
-            }])
-
-        st.subheader("Downloads")
-        st.download_button("Kept comps CSV", kept_csv, file_name="kept_comps.csv")
-        st.download_button("Removed comps CSV", removed_csv, file_name="removed_rows.csv")
-        st.download_button("Summary CSV", summary_df.to_csv(index=False).encode(), file_name="adjustment_summary.csv")
-        st.download_button("Original chart PNG", fig_bytes(orig_fig), file_name="original.png")
-        st.download_button("Adjusted (final) PNG", fig_bytes(final_fig), file_name="adjusted_final.png")
-
-        # ---- Market narrative ----
+            s_before = compute_stats(work_filt, y_col, x_col)
+            s_after  = compute_stats(kept_plot if 'kept_plot' in locals() else work_filt, y_col, x_col)
+            slope_use = s_after.get("slope", np.nan) if not np.isnan(s_after.get("slope", np.nan)) else s_before.get("slope", np.nan)
+            # if it's a sqft-like feature, s_* already includes median_ppsf; prefer the "after" one when available
+            median_use = s_after.get("median_ppsf", np.nan)
+            if np.isnan(median_use):
+                median_use = s_before.get("median_ppsf", np.nan)
         
-        
-     # ---- Market narrative (template, feature-aware) ----
-    st.divider()
-    st.subheader("Market narrative")
-    
-    def _md_safe(s: str) -> str:
-        return s.replace("$", r"\$").replace("_", r"\_")
-    
-    def _pretty_feature_name(label: str) -> str:
-        m = {
-            "SqFt Finished": "Gross Living Area",
-            "Above Grade Finished": "Gross Living Area",
-            "Basement SqFt Finished": "Basement Finish",
-            "Basement Y/N": "Basement",
-            "Garage Spaces": "Garage Spaces",
-        }
-        return m.get(label, label)
-    
-    def _unit_phrase(label: str, is_binary: bool) -> str:
-        l = label.lower()
-        if is_binary:
-            # binary reads as yes/no difference
-            return " (Yes vs No)"
-        if "garage" in l: return " per additional garage bay"
-        if "bed" in l:    return " per additional bedroom"
-        if "bath" in l:   return " per additional bathroom"
-        if "year" in l or "built" in l: return " per year"
-        if "acre" in l:   return " per acre"
-        if "sq" in l or "gla" in l or "finished" in l or "living area" in l:
-            return " per additional square foot"
-        return f" per +1 {label}"
-    
-    def build_appraiser_narrative(
-    feature_label: str,
-    slope: Optional[float],
-    median_ppsf: Optional[float],
-    context: dict,
-    is_binary: bool
-) -> str:
-
-        feature_name = _pretty_feature_name(feature_label)
-        where_when = ", ".join([p for p in [context.get("location"), context.get("timeframe")] if p])
-        header = f"**{feature_name} Adjustment Commentary (Regression-Based):**"
-        intro = (f"The {feature_name.lower()} adjustment was developed using regression analysis applied "
-         "to a data set of comparable properties from within the subject’s competitive market area. "
-         f"The analysis isolated the contributory effect of {feature_name.lower()} on sale price while controlling for "
-         "other key variables such as location, condition, and amenities. ")
-        methods = ("Prior to model calibration, the data set was screened for accuracy, and statistical outliers or sales "
-           "exhibiting atypical motivation or condition were removed to ensure a reliable representation of market behavior.")
-
-        body = ("The resulting coefficient reflects the market-supported rate of change in sale price attributable to differences "
-                f"in {feature_name.lower()} and provides a credible, data-driven basis for the applied adjustment.")
-    
-        # concise quantitative line(s)
-        lines = [header, "", intro, methods, body, ""]
-        if slope is not None and not np.isnan(slope):
-            lines.append(f"**Indicated rate of change:** ${slope:,.2f}{_unit_phrase(feature_label, is_binary)}.")
-        if (not is_binary) and (median_ppsf is not None) and (not np.isnan(median_ppsf)):
-            lines.append(f"**Reference median $/sq ft:** ${median_ppsf:,.2f}.")
-    
-        return "\n".join(lines)
-    
-    # stats for narrative
-    if is_binary:
-        bs_all = compute_binary_stats(work_filt, y_col, x_col)
-        bs_final = compute_binary_stats(kept_plot if 'kept_plot' in locals() else work_filt, y_col, x_col)
-        slope_use = bs_final.get("slope", np.nan) if bs_final.get("has_both") else bs_all.get("slope", np.nan)
-        median_use = np.nan  # not applicable for binary
-    else:
-        s_before = compute_stats(work_filt, y_col, x_col)
-        s_after  = compute_stats(kept_plot if 'kept_plot' in locals() else work_filt, y_col, x_col)
-        slope_use = s_after.get("slope", np.nan) if not np.isnan(s_after.get("slope", np.nan)) else s_before.get("slope", np.nan)
-        # if it's a sqft-like feature, s_* already includes median_ppsf; prefer the "after" one when available
-        median_use = s_after.get("median_ppsf", np.nan)
-        if np.isnan(median_use):
-            median_use = s_before.get("median_ppsf", np.nan)
-    
-    context_info = infer_market_context(df)
-    narrative_text = build_appraiser_narrative(feature_label, slope_use, median_use, context_info, is_binary)
-    st.markdown(_md_safe(narrative_text))
+        context_info = infer_market_context(df)
+        narrative_text = build_appraiser_narrative(feature_label, slope_use, median_use, context_info, is_binary)
+        st.markdown(_md_safe(narrative_text))
 
 else:
     # No adjustment yet — show one baseline chart
