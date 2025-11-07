@@ -1,5 +1,7 @@
-
-# app.py — v1.9.8b (no flagged logic; map+Adjust kept; baseline int ticks use filtered data)
+# streamlit_app.py — v1.9.9 (single-file bundle with simple jitter fix)
+# - Robust file loader (CSV/TXT encoding+delimiter sniff)
+# - Feature + Time analysis
+# - Jitter disabled automatically when removed markers are shown (diamonds align)
 
 import streamlit as st
 import pandas as pd
@@ -11,7 +13,6 @@ import os
 from difflib import get_close_matches
 import pydeck as pdk
 from typing import Optional
-
 
 import io, csv
 
@@ -64,8 +65,6 @@ def load_table(uploaded_file) -> pd.DataFrame:
     )
     return df
 
-
-# ===================== PAGE CONFIG =====================
 
 # ===================== CONSTANTS =====================
 Y_COL_CANDIDATES = ["Sold Price", "Sale Price", "SoldPrice", "Close Price"]
@@ -421,26 +420,26 @@ def make_scatter_figure(
     x_true = df[x_col].values
     y = df[y_col].values
 
-    # jitter for discrete
+    # jitter for discrete (EASY FIX: disable if removed markers are displayed)
     if int_ticks is not None and len(int_ticks) > 0:
+        jw = float(jitter_width)
+        if removed_xy is not None:
+            jw = 0.0  # turn off jitter so diamonds align exactly
         rng = np.random.default_rng(42)
-        x_plot = x_true + rng.uniform(-jitter_width, jitter_width, size=len(x_true))
+        x_plot = x_true.astype(float) + rng.uniform(-jw, jw, size=len(x_true))
         ax.set_xticks(int_ticks)
         if xtick_labels:
             ax.set_xticklabels(xtick_labels)
         else:
             ax.set_xticklabels([str(int(t)) for t in int_ticks])
     else:
-        x_plot = x_true
+        x_plot = x_true.astype(float)
 
     ax.scatter(x_plot, y, s=32, label="Comps")
 
     if removed_xy is not None:
         rx, ry = removed_xy
-        if int_ticks is not None:
-            import numpy as _np
-            rng3 = _np.random.default_rng(42)
-            rx = _np.array(rx, dtype=float) + rng3.uniform(-jitter_width, jitter_width, size=len(rx))
+        # NOTE: no separate jitter on removed markers; since jw==0 above, both layers align
         ax.scatter(rx, ry, facecolors='none', edgecolors='black', marker='D', s=90, label='Removed', zorder=3)
 
     if len(x_true) >= 2 and np.nanstd(x_true) > 0:
@@ -649,8 +648,6 @@ def ai_summary_always(feature_label, y_col, stats_before, stats_after, context):
     except Exception:
         return ai_summary_fallback(feature_label, y_col, stats_before, stats_after, context)
 
-# ===================== FILE LOADER =====================
-
 # ===================== UI HEADER =====================
 st.title("Comparable Adjustment Explorer")
 st.caption("For appraisers. Upload MLS exports, pick a feature, view graph-first results with clear stats.")
@@ -767,7 +764,14 @@ if not x_col:
 work = df[[y_col, x_col]].copy()
 work[y_col] = clean_numeric(work[y_col])
 work[x_col] = clean_numeric(map_yes_no_to_binary(work[x_col]))
-work = work.dropna(subset=[y_col, x_col]).reset_index(drop=False)
+
+# If feature is Garage Spaces — treat blanks as 0
+if "garage" in x_col.lower():
+    work[x_col] = work[x_col].fillna(0)
+
+# Drop rows that still have no price
+work = work.dropna(subset=[y_col]).reset_index(drop=False)
+
 if work.empty:
     st.error("No usable data after cleaning."); st.stop()
 
@@ -966,17 +970,14 @@ if st.button("Adjust to Target", type="primary"):
 
     # --- Adjusted (FINAL) ---
     with c1:
-        _rx = removed_df.get(x_col, pd.Series([], dtype=float)).values if not removed_df.empty else []
-        _ry = removed_df.get(y_col, pd.Series([], dtype=float)).values if not removed_df.empty else []
         final_fig = make_scatter_figure(
-        kept_plot, y_col, x_col, f"Adjusted comps — {feature_label}",
-        int_ticks=([0,1] if is_binary else (
-        np.sort(kept_plot[x_col].round().astype(int).unique())
-        if looks_discrete_integer(kept_plot[x_col]) else None)),
-        xtick_labels=(["No","Yes"] if is_binary else None),
-        removed_xy=None  # <— no removed markers on the final chart
-)
-
+            kept_plot, y_col, x_col, f"Adjusted comps — {feature_label}",
+            int_ticks=([0,1] if is_binary else (
+                np.sort(kept_plot[x_col].round().astype(int).unique())
+                if looks_discrete_integer(kept_plot[x_col]) else None)),
+            xtick_labels=(["No","Yes"] if is_binary else None),
+            removed_xy=None  # no removed markers on the final chart
+        )
         st.pyplot(final_fig)
     st.caption("**Legend:** • Blue dot = Kept comps  • Line = Fit")
     with c2:
@@ -1041,16 +1042,13 @@ if st.button("Adjust to Target", type="primary"):
         st.download_button("Original chart PNG", fig_bytes(orig_fig), file_name="original.png")
         st.download_button("Adjusted (final) PNG", fig_bytes(final_fig), file_name="adjusted_final.png")
 
-        # ---- Market narrative ----
-        
-        
-     # ---- Market narrative (template, feature-aware) ----
+    # ---- Market narrative ----
     st.divider()
     st.subheader("Market narrative")
-    
+
     def _md_safe(s: str) -> str:
         return s.replace("$", r"\$").replace("_", r"\_")
-    
+
     def _pretty_feature_name(label: str) -> str:
         m = {
             "SqFt Finished": "Gross Living Area",
@@ -1060,7 +1058,7 @@ if st.button("Adjust to Target", type="primary"):
             "Garage Spaces": "Garage Spaces",
         }
         return m.get(label, label)
-    
+
     def _unit_phrase(label: str, is_binary: bool) -> str:
         l = label.lower()
         if is_binary:
@@ -1074,7 +1072,7 @@ if st.button("Adjust to Target", type="primary"):
         if "sq" in l or "gla" in l or "finished" in l or "living area" in l:
             return " per additional square foot"
         return f" per +1 {label}"
-    
+
     def build_appraiser_narrative(
     feature_label: str,
     slope: Optional[float],
@@ -1085,26 +1083,42 @@ if st.button("Adjust to Target", type="primary"):
 
         feature_name = _pretty_feature_name(feature_label)
         where_when = ", ".join([p for p in [context.get("location"), context.get("timeframe")] if p])
-        header = f"**{feature_name} Adjustment Commentary (Regression-Based):**"
-        intro = (f"The {feature_name.lower()} adjustment was developed using regression analysis applied "
-         "to a data set of comparable properties from within the subject’s competitive market area. "
-         f"The analysis isolated the contributory effect of {feature_name.lower()} on sale price while controlling for "
-         "other key variables such as location, condition, and amenities. ")
-        methods = ("Prior to model calibration, the data set was screened for accuracy, and statistical outliers or sales "
-           "exhibiting atypical motivation or condition were removed to ensure a reliable representation of market behavior.")
 
-        body = ("The resulting coefficient reflects the market-supported rate of change in sale price attributable to differences "
-                f"in {feature_name.lower()} and provides a credible, data-driven basis for the applied adjustment.")
-    
-        # concise quantitative line(s)
-        lines = [header, "", intro, methods, body, ""]
+        header = f"**{feature_name} Adjustment Commentary (Regression-Based):**"
+        intro = (
+            f"The {feature_name.lower()} adjustment was developed using regression analysis applied "
+            "to a data set of comparable properties from within the subject’s competitive market area. "
+            f"The analysis isolated the contributory effect of {feature_name.lower()} on sale price while controlling for "
+            "other key variables such as location, condition, and amenities."
+        )
+        methods = (
+            "Prior to model calibration, the data set was screened for accuracy, and statistical outliers or sales "
+            "exhibiting atypical motivation or condition were removed to ensure a reliable representation of market behavior."
+        )
+        body = (
+            "The resulting coefficient reflects the market-supported rate of change in sale price attributable to differences "
+            f"in {feature_name.lower()} and provides a credible, data-driven basis for the applied adjustment."
+        )
+
+        lines = [
+            header,
+            "",
+            intro,
+            methods,
+            body,
+            ""
+        ]
+
         if slope is not None and not np.isnan(slope):
             lines.append(f"**Indicated rate of change:** ${slope:,.2f}{_unit_phrase(feature_label, is_binary)}.")
         if (not is_binary) and (median_ppsf is not None) and (not np.isnan(median_ppsf)):
             lines.append(f"**Reference median $/sq ft:** ${median_ppsf:,.2f}.")
-    
-        return "\n".join(lines)
-    
+
+        return "\n\n".join(lines)
+
+
+
+
     # stats for narrative
     if is_binary:
         bs_all = compute_binary_stats(work_filt, y_col, x_col)
@@ -1119,7 +1133,7 @@ if st.button("Adjust to Target", type="primary"):
         median_use = s_after.get("median_ppsf", np.nan)
         if np.isnan(median_use):
             median_use = s_before.get("median_ppsf", np.nan)
-    
+
     context_info = infer_market_context(df)
     narrative_text = build_appraiser_narrative(feature_label, slope_use, median_use, context_info, is_binary)
     st.markdown(_md_safe(narrative_text))
