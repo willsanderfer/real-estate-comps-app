@@ -903,7 +903,7 @@ with left_admin:
     max_removals = st.slider("Max removals allowed", min_value=0, max_value=max(0, min(200, n_total - 2)), value=default_max)
 
 with right_admin:
-    st.subheader("Current stats (filtered)")
+    st.subheader(f"Current stats — {feature_label}")
     if is_binary:
         if bin_stats["has_both"]:
             st.metric("Avg difference (Yes − No)", f"${bin_stats['slope']:,.2f}")
