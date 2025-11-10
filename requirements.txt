@@ -10,3 +10,5 @@ rapidfuzz
 python-dateutil
 xlrd
 pillow
+plotly>=5.20
+streamlit-plotly-events>=0.0.6
