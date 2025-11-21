@@ -1,7 +1,7 @@
-# streamlit_app.py — v1.9.9 (single-file bundle with simple jitter fix)
+# streamlit_app.py — v1.9.9 (garage = no jitter)
 # - Robust file loader (CSV/TXT encoding+delimiter sniff)
 # - Feature + Time analysis
-# - Jitter disabled automatically when removed markers are shown (diamonds align)
+# - Jitter disabled automatically when Garage Spaces is selected
 
 import streamlit as st
 import pandas as pd
@@ -346,7 +346,7 @@ def make_time_scatter(df: pd.DataFrame, y_col: str, date_col: str, title: str):
         ax.plot(x_line, y_line, linewidth=2, label="Trend")
     ax.set_title(title); ax.set_xlabel(date_col); ax.set_ylabel(y_col)
     ax.grid(axis="y", linestyle="--", color="#e5e5e5", linewidth=0.8); ax.legend()
-    fig.tight_layout()
+    fig.tight_LAYOUT()
     return fig
 
 def key_takeaways_time(pct_per_month, dollar_per_month, r2, n):
@@ -410,7 +410,7 @@ def filter_data(df_in: pd.DataFrame, y_col: str, x_col: str, date_col: str | Non
 def make_scatter_figure(
     df, y_col, x_col, title,
     int_ticks=None, jitter_width=0.08, xtick_labels=None,
-    removed_xy=None
+    removed_xy=None, disable_jitter: bool = False
 ):
     fig, ax = plt.subplots(figsize=(7.8,5.2))
     if df.empty:
@@ -420,18 +420,23 @@ def make_scatter_figure(
     x_true = df[x_col].values
     y = df[y_col].values
 
-    # jitter for discrete (EASY FIX: disable if removed markers are displayed)
+    # jitter for discrete (but allow global disable, e.g., Garage Spaces)
     if int_ticks is not None and len(int_ticks) > 0:
-        jw = float(jitter_width)
-        if removed_xy is not None:
-            jw = 0.0  # turn off jitter so diamonds align exactly
-        rng = np.random.default_rng(42)
-        x_plot = x_true.astype(float) + rng.uniform(-jw, jw, size=len(x_true))
         ax.set_xticks(int_ticks)
         if xtick_labels:
             ax.set_xticklabels(xtick_labels)
         else:
             ax.set_xticklabels([str(int(t)) for t in int_ticks])
+
+        if disable_jitter:
+            x_plot = x_true.astype(float)
+        else:
+            jw = float(jitter_width)
+            # When removed markers are shown, keep diamonds exactly on the integer
+            if removed_xy is not None:
+                jw = 0.0
+            rng = np.random.default_rng(42)
+            x_plot = x_true.astype(float) + rng.uniform(-jw, jw, size=len(x_true))
     else:
         x_plot = x_true.astype(float)
 
@@ -439,7 +444,7 @@ def make_scatter_figure(
 
     if removed_xy is not None:
         rx, ry = removed_xy
-        # NOTE: no separate jitter on removed markers; since jw==0 above, both layers align
+        # NOTE: no separate jitter on removed markers
         ax.scatter(rx, ry, facecolors='none', edgecolors='black', marker='D', s=90, label='Removed', zorder=3)
 
     if len(x_true) >= 2 and np.nanstd(x_true) > 0:
@@ -831,6 +836,9 @@ work_filt = filter_data(
 if work_filt.empty:
     st.error("No rows match the current filters."); st.stop()
 
+# Determine if this feature should have jitter disabled (Garage Spaces)
+no_jitter_for_this_feature = ("garage" in feature_label.lower()) or ("garage" in x_col.lower())
+
 # Map (collapsed by default)
 with st.expander("Map of filtered comps", expanded=False):
     lat_col, lon_col = find_lat_lon_cols(df)
@@ -942,7 +950,8 @@ if st.button("Adjust to Target", type="primary"):
             f"Original comps — {feature_label} (filtered; shows removals if applied)",
             int_ticks=( [0,1] if is_binary else (np.sort(work_filt[x_col].round().astype(int).unique()) if looks_discrete_integer(work_filt[x_col]) else None) ),
             xtick_labels=(["No","Yes"] if is_binary else None),
-            removed_xy=(_rx, _ry) if len(_rx) > 0 else None
+            removed_xy=(_rx, _ry) if len(_rx) > 0 else None,
+            disable_jitter=no_jitter_for_this_feature
         )
         st.pyplot(orig_fig)
     st.caption("**Legend:** • Blue dot = Kept comps  • Black ◊ = Removed (to reach target)")
@@ -976,7 +985,8 @@ if st.button("Adjust to Target", type="primary"):
                 np.sort(kept_plot[x_col].round().astype(int).unique())
                 if looks_discrete_integer(kept_plot[x_col]) else None)),
             xtick_labels=(["No","Yes"] if is_binary else None),
-            removed_xy=None  # no removed markers on the final chart
+            removed_xy=None,  # no removed markers on the final chart
+            disable_jitter=no_jitter_for_this_feature
         )
         st.pyplot(final_fig)
     st.caption("**Legend:** • Blue dot = Kept comps  • Line = Fit")
@@ -1147,7 +1157,8 @@ else:
             f"Comps — {feature_label} (filtered)",
             int_ticks=( [0,1] if is_binary else (np.sort(work_filt[x_col].round().astype(int).unique()) if looks_discrete_integer(work_filt[x_col]) else None) ),
             xtick_labels=(["No","Yes"] if is_binary else None),
-            removed_xy=None
+            removed_xy=None,
+            disable_jitter=no_jitter_for_this_feature
         )
         st.pyplot(base_fig)
     with c2:
@@ -1167,7 +1178,7 @@ else:
             st.metric("Price per +1", f"${s['slope']:,.2f}" if not np.isnan(s['slope']) else "—")
             st.metric("R²", f"{s['r2']:.3f}" if not np.isnan(s['r2']) else "—")
             if not np.isnan(s["median_ppsf"]):
-                st.metric("Median $/sq ft", f"${s['median_ppsf']:,.2f}")
+                st.metric("Median $/sq ft", f"${s["median_ppsf"]:,.2f}")
             st.caption(f"Comps: {s['n']}")
 
     st.subheader("Downloads")
