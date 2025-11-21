@@ -221,6 +221,11 @@ def resolve_feature_column(df: pd.DataFrame, label: str) -> str | None:
             if str(col).lower().startswith(str(s).lower()[:6]):
                 score += 0.15
         return score
+    
+    # If Garage Spaces is blank, that means zero
+    if "Garage Spaces" in df.columns:
+        df["Garage Spaces"] = pd.to_numeric(df["Garage Spaces"], errors="coerce").fillna(0)
+
 
     for s in syns:
         if s in cols and _viable_numeric(df[s]): 
