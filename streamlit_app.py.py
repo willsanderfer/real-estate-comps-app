@@ -506,11 +506,8 @@ def greedy_remove_toward_target(df: pd.DataFrame, y_col: str, x_col: str, target
         df = df.drop(df.index[best_idx]).reset_index(drop=True)
     return df, removed_info, []
 
-
-# ===================== MARKET CONTEXT (for narratives) =====================
+# ===================== AI NARRATIVE =====================
 def infer_market_context(df: pd.DataFrame):
-    """Infer a simple (optional) location/timeframe string from common MLS columns.
-    Used only for the non-AI narrative block."""
     geo_cols = ["City","Municipality","County","State","ST","Zip","ZIP","Postal Code","Neighborhood",
                 "Subdivision","MLS Area","Area","Address","Street Address","Location","Region"]
     found = {}
@@ -542,6 +539,124 @@ def infer_market_context(df: pd.DataFrame):
             start = d.min().strftime("%b %Y"); end = d.max().strftime("%b %Y")
             timeframe = start if start == end else f"{start}–{end}"
     return {"location": location_str, "timeframe": timeframe}
+
+def ai_summary_openai(feature_label, y_col, stats_before, stats_after, context):
+    from openai import OpenAI
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise RuntimeError("OPENAI_API_KEY not set")
+    client = OpenAI(api_key=key)
+
+    slope_use = stats_after.get("slope", np.nan)
+    if np.isnan(slope_use):
+        slope_use = stats_before.get("slope", np.nan)
+    r2_use = stats_after.get("r2", np.nan)
+    if np.isnan(r2_use):
+        r2_use = stats_before.get("r2", np.nan)
+
+    mppsf_after = stats_after.get("median_ppsf", np.nan)
+    mppsf_before = stats_before.get("median_ppsf", np.nan)
+    mppsf_val = mppsf_after if not np.isnan(mppsf_after) else mppsf_before
+    mppsf_available = not np.isnan(mppsf_val)
+
+    slope_rounded_5 = round_to_nearest_5_dollars(slope_use)
+
+    lf = (feature_label or "").lower()
+    is_binary_feature = ("y/n" in lf) or ("basement y" in lf)
+    long_phrase, _ = unit_phrase_for_feature(feature_label, is_binary=is_binary_feature)
+    coeff_phrase = None
+    if not np.isnan(slope_rounded_5) and not is_binary_feature:
+        coeff_phrase = f"${slope_rounded_5:,.2f} {long_phrase}"
+
+    loc = context.get("location") or ""
+    tf = context.get("timeframe") or ""
+    where_when = ", ".join([p for p in [loc, tf] if p]).strip(", ")
+
+    system_rules = (
+        "You are a certified residential appraiser writing a professional adjustment explanation."
+        " Use concise, neutral, 4–6 sentences. Mention regression of comparable sales in the subject’s"
+        " competitive market area. Use the provided feature label verbatim. Note that atypical sales/outliers"
+        " were removed. Conclude that the coefficient represents the market-supported contributory effect."
+        " Use dollars with thousands separators. Do NOT mention internal tools or targets."
+    )
+
+    payload = {
+        "market_context": where_when,
+        "y_axis_label": y_col,
+        "feature_label_exact": feature_label,
+        "coefficient_literal_phrase": coeff_phrase,
+        "r2_value": None if (r2_use is None or np.isnan(r2_use)) else float(r2_use),
+        "median_price_per_sqft_available": bool(mppsf_available),
+        "median_price_per_sqft": None if not mppsf_available else float(mppsf_val),
+        "instructions": (
+            "Use 'feature_label_exact' verbatim when naming the feature. "
+            "If 'coefficient_literal_phrase' is provided, use it verbatim."
+        ),
+    }
+
+    chat = client.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0.2,
+        messages=[
+            {"role": "system", "content": system_rules},
+            {"role": "user", "content": str(payload)},
+        ],
+    )
+    return chat.choices[0].message.content.strip()
+
+def ai_summary_fallback(feature_label, y_col, stats_before, stats_after, context):
+    slope_use = stats_after.get("slope", np.nan)
+    if np.isnan(slope_use):
+        slope_use = stats_before.get("slope", np.nan)
+    r2_use = stats_after.get("r2", np.nan)
+    if np.isnan(r2_use):
+        r2_use = stats_before.get("r2", np.nan)
+
+    mppsf_after = stats_after.get("median_ppsf", np.nan)
+    mppsf_before = stats_before.get("median_ppsf", np.nan)
+    mppsf_val = mppsf_after if not np.isnan(mppsf_after) else mppsf_before
+
+    slope_rounded_5 = round_to_nearest_5_dollars(slope_use)
+    lf = (feature_label or "").lower()
+    is_binary_feature = ("y/n" in lf) or ("basement y" in lf)
+    long_phrase, _ = unit_phrase_for_feature(feature_label, is_binary=is_binary_feature)
+    coeff_phrase = None
+    if not np.isnan(slope_rounded_5) and not is_binary_feature:
+        coeff_phrase = f"${slope_rounded_5:,.2f} {long_phrase}"
+
+    loc = context.get("location")
+    tf = context.get("timeframe")
+    where_when = ", ".join([p for p in [loc, tf] if p]) if (loc or tf) else None
+
+    lines = []
+    lead = "Regression analysis of comparable sales"
+    if where_when:
+        lead += f" in {where_when}"
+    lead += " was performed to estimate the contributory effect of the selected feature."
+    lines.append(lead)
+
+    if coeff_phrase:
+        lines.append(f"The resulting coefficient indicates a typical sale price change of {coeff_phrase}.")
+    else:
+        lines.append("The resulting coefficient reflects the typical sale price difference attributable to the feature.")
+
+    if not np.isnan(r2_use):
+        lines.append(f"Model fit was quantified using R²={r2_use:.3f}, based on the filtered data set.")
+    else:
+        lines.append("Model fit was assessed on the filtered data set.")
+
+    if not np.isnan(mppsf_val):
+        lines.append(f"For reference, the median price per square foot was ${mppsf_val:,.2f} among usable observations.")
+
+    lines.append("Atypical sales and statistical outliers were removed to reflect typical market behavior.")
+    lines.append("These results provide a market-supported basis for the applied adjustment.")
+    return " ".join(lines)
+
+def ai_summary_always(feature_label, y_col, stats_before, stats_after, context):
+    try:
+        return ai_summary_openai(feature_label, y_col, stats_before, stats_after, context)
+    except Exception:
+        return ai_summary_fallback(feature_label, y_col, stats_before, stats_after, context)
 
 # ===================== UI HEADER =====================
 st.title("Comparable Adjustment Explorer")
@@ -575,262 +690,6 @@ st.success(f"Y-axis locked to: {y_col}")
 
 # Sidebar page switch (feature vs time)
 mode = st.sidebar.radio("Analysis", ["Feature adjustment","Time adjustment"], index=0)
-
-if mode == "Feature adjustment":
-    feature_mode = st.sidebar.radio(
-        "Feature mode",
-        ["Single feature", "Batch (multiple features)"],
-        index=0,
-        help="Run one feature at a time or generate multiple adjustments at once.",
-    )
-else:
-    feature_mode = None
-
-
-
-# ===================== BATCH FEATURE ADJUSTMENT (MULTIPLE FEATURES) =====================
-def run_batch_feature_mode(df: pd.DataFrame, y_col: str):
-    """Run multiple feature adjustments at once and show combined summary.
-
-    This mode:
-    - Lets the appraiser select multiple feature labels (SqFt, Garage, Basement, etc.).
-    - For each feature, cleans data, runs a regression, and optionally trims toward a target slope.
-    - Shows a chart with kept vs removed comps and current stats.
-    - Builds a combined summary table and AI narrative covering all selected features.
-    """
-
-    st.subheader("Batch adjustments (multiple features)")
-    st.caption("Select several features and the app will run each adjustment, one after another, using the same filters.")
-
-    feature_options = list(FEATURE_SYNONYMS.keys())
-    default_batch = [lbl for lbl in ["SqFt Finished", "Above Grade Finished", "Garage Spaces", "Basement SqFt Finished"] if lbl in feature_options]
-    selected_features = st.multiselect(
-        "Features to analyze",
-        feature_options,
-        default=default_batch,
-    )
-
-    if not selected_features:
-        st.info("Select at least one feature to run batch analysis.")
-        return
-
-    # Base cleaned price series
-    base = df.copy()
-    base[y_col] = clean_numeric(base[y_col])
-    base = base.dropna(subset=[y_col])
-    if base.empty:
-        st.error("No usable data after cleaning the Sold Price column.")
-        return
-
-    # Simple global filters for batch mode: price + (optional) date
-    date_col = find_first_date_col(df)
-    if date_col and date_col in base.columns:
-        base[date_col] = pd.to_datetime(base[date_col], errors="coerce")
-    else:
-        date_col = None
-
-    price_min, price_max = float(base[y_col].min()), float(base[y_col].max())
-
-    with st.expander("Batch filters (apply to all features)", expanded=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            price_rng = st.slider(
-                "Sold Price range",
-                min_value=price_min,
-                max_value=price_max,
-                value=(price_min, price_max),
-                step=max(1.0, (price_max - price_min) / 200.0),
-            )
-        with c2:
-            if date_col is not None and base[date_col].notna().any():
-                dmin = base[date_col].min().date()
-                dmax = base[date_col].max().date()
-                date_rng = st.date_input(
-                    f"{date_col} window",
-                    value=(dmin, dmax),
-                    min_value=dmin,
-                    max_value=dmax,
-                )
-            else:
-                date_rng = None
-
-    mask = (base[y_col].between(price_rng[0], price_rng[1]))
-    if date_col and date_rng is not None:
-        d_series = base[date_col]
-        mask &= d_series.between(pd.to_datetime(date_rng[0]), pd.to_datetime(date_rng[1]))
-    base = base.loc[mask].copy()
-    if base.empty:
-        st.error("No rows match the current batch filters.")
-        return
-
-    # How aggressively can each feature remove points?
-    st.caption("Set how aggressively each feature may remove outliers to reach its target adjustment.")
-    c1, c2 = st.columns(2)
-    with c1:
-        max_pct = st.slider("Max percent removed per feature", 0, 50, 25)
-    with c2:
-        max_cap = st.number_input("Max rows removed per feature (cap)", min_value=0, max_value=500, value=200, step=10)
-
-    max_frac = max_pct / 100.0
-    summary_rows = []
-    for feature_label in selected_features:
-        st.markdown(f"---\n### {feature_label}")
-
-        x_col = resolve_feature_column(base, feature_label)
-        if not x_col:
-            st.warning(f"Could not map “{feature_label}” to any column in your file. Skipping.")
-            continue
-
-        work = base[[y_col, x_col]].copy()
-        work[y_col] = clean_numeric(work[y_col])
-        work[x_col] = clean_numeric(map_yes_no_to_binary(work[x_col]))
-
-        # If feature is Garage Spaces — treat blanks as 0
-        if "garage" in x_col.lower():
-            work[x_col] = work[x_col].fillna(0)
-
-        work = work.dropna(subset=[y_col]).reset_index(drop=False)
-        if work.empty:
-            st.warning(f"No usable data for {feature_label} after cleaning. Skipping.")
-            continue
-
-        uniq = np.sort(work[x_col].dropna().unique())
-        is_binary = len(uniq) <= 2 and set(np.unique(uniq).astype(int)) <= {0, 1}
-        intish = looks_discrete_integer(work[x_col]) if not is_binary else True
-        if is_binary:
-            int_ticks = [0, 1]
-            xtick_labels = ["No", "Yes"]
-        else:
-            int_ticks = np.sort(work[x_col].round().astype(int).unique()) if intish else None
-            xtick_labels = None
-
-        # Original stats
-        if is_binary:
-            stats_before = compute_binary_stats(work, y_col, x_col)
-            current_slope = stats_before.get("slope", np.nan)
-        else:
-            stats_before = compute_stats(work, y_col, x_col)
-            current_slope = stats_before.get("slope", np.nan)
-
-        default_target = 0.0 if np.isnan(current_slope) else float(round(current_slope))
-
-        c_left, c_right = st.columns([2, 1], gap="large")
-        with c_right:
-            target = st.number_input(
-                f"Target adjustment (price per +1 {feature_label})",
-                value=default_target,
-                step=1.0,
-                key=f"batch_target_{feature_label}",
-            )
-            n_total = len(work)
-            max_removals = min(int(n_total * max_frac), max_cap)
-            max_removals = max(0, min(max_removals, max(0, n_total - 2)))
-            st.caption(f"Max removals for this feature: {max_removals} (of {n_total})")
-
-        # Apply greedy removal toward the target
-        kept_df, removed_info, _ = greedy_remove_toward_target(
-            work[["index", y_col, x_col]].copy(),
-            y_col,
-            x_col,
-            target,
-            max_removals,
-        )
-        kept_plot = kept_df[[x_col, y_col]].copy()
-        removed_df = pd.DataFrame(removed_info)
-
-        _rx = removed_df.get(x_col, pd.Series([], dtype=float)).values if not removed_df.empty else []
-        _ry = removed_df.get(y_col, pd.Series([], dtype=float)).values if not removed_df.empty else []
-
-        with c_left:
-            fig = make_scatter_figure(
-                kept_plot,
-                y_col,
-                x_col,
-                f"{feature_label}",
-                int_ticks=int_ticks,
-                jitter_width=0.08,
-                xtick_labels=xtick_labels,
-                removed_xy=None,  # hide removed markers in batch view
-            )
-            st.pyplot(fig)
-            st.caption("Legend: • Blue dot = Kept comps   • Line = Fit (kept comps)")
-
-        # Final stats
-        if is_binary:
-            stats_after = compute_binary_stats(kept_plot, y_col, x_col)
-            slope_after = stats_after.get("slope", np.nan)
-            r2_after = stats_after.get("r2", np.nan)
-            median_ppsf_after = np.nan
-        else:
-            stats_after = compute_stats(kept_plot, y_col, x_col)
-            slope_after = stats_after.get("slope", np.nan)
-            r2_after = stats_after.get("r2", np.nan)
-            median_ppsf_after = stats_after.get("median_ppsf", np.nan)
-
-        st.markdown("**Current stats (after removals):**")
-        if is_binary:
-            if stats_after.get("has_both"):
-                st.write(f"Avg difference (Yes − No): ${slope_after:,.2f}" if not np.isnan(slope_after) else "Avg difference (Yes − No): —")
-                st.write(f"R²: {r2_after:.3f}" if not np.isnan(r2_after) else "R²: —")
-            else:
-                st.write("Avg difference (Yes − No): — (need both Yes and No)")
-            st.write(f"Comps kept: {len(kept_plot)} | Removed: {len(removed_info)}")
-        else:
-            st.write(f"Price per +1: ${slope_after:,.2f}" if not np.isnan(slope_after) else "Price per +1: —")
-            st.write(f"R²: {r2_after:.3f}" if not np.isnan(r2_after) else "R²: —")
-            if not np.isnan(median_ppsf_after):
-                st.write(f"Median $/sq ft: ${median_ppsf_after:,.2f}")
-            st.write(f"Comps kept: {len(kept_plot)} | Removed: {len(removed_info)}")
-
-        # Build summary row
-        if is_binary:
-            summary_rows.append({
-                "feature_label": feature_label,
-                "mapped_feature_column": x_col,
-                "target_slope": float(target),
-                "original_slope": None if np.isnan(stats_before.get("slope", np.nan)) else float(stats_before["slope"]),
-                "original_r2": None if np.isnan(stats_before.get("r2", np.nan)) else float(stats_before["r2"]),
-                "original_median_ppsf": None,
-                "slope": None if np.isnan(slope_after) else float(slope_after),
-                "r2": None if np.isnan(r2_after) else float(r2_after),
-                "median_ppsf": None,
-                "n": int(len(kept_plot)),
-                "removed_count": int(len(removed_info)),
-            })
-        else:
-            summary_rows.append({
-                "feature_label": feature_label,
-                "mapped_feature_column": x_col,
-                "target_slope": float(target),
-                "original_slope": None if np.isnan(stats_before.get("slope", np.nan)) else float(stats_before["slope"]),
-                "original_r2": None if np.isnan(stats_before.get("r2", np.nan)) else float(stats_before["r2"]),
-                "original_median_ppsf": None if np.isnan(stats_before.get("median_ppsf", np.nan)) else float(stats_before["median_ppsf"]),
-                "slope": None if np.isnan(slope_after) else float(slope_after),
-                "r2": None if np.isnan(r2_after) else float(r2_after),
-                "median_ppsf": None if np.isnan(median_ppsf_after) else float(median_ppsf_after),
-                "n": int(len(kept_plot)),
-                "removed_count": int(len(removed_info)),
-            })
-
-
-    if not summary_rows:
-        st.info("No features produced usable results.")
-        return
-
-    summary_df = pd.DataFrame(summary_rows)
-
-    st.markdown("---")
-    st.subheader("Batch summary table")
-    st.dataframe(summary_df, use_container_width=True)
-
-    st.subheader("Downloads (batch)")
-    st.download_button(
-        "Batch summary CSV",
-        summary_df.to_csv(index=False).encode(),
-        file_name="batch_adjustments_summary.csv",
-    )
-
-    st.markdown("---")
 
 # ===================== TIME ADJUSTMENT PAGE =====================
 if mode == "Time adjustment":
@@ -900,12 +759,6 @@ if mode == "Time adjustment":
         st.write("• " + b)
     st.subheader("Plain-English")
     st.write(plain_english_time(stats_time["pct_per_month"], stats_time["dollar_per_month"]))
-    st.stop()
-
-
-# If batch mode is selected, run it and exit before single-feature logic
-if mode == "Feature adjustment" and feature_mode == "Batch (multiple features)":
-    run_batch_feature_mode(df, y_col)
     st.stop()
 
 # ===================== FEATURE ADJUSTMENT PAGE =====================
@@ -1102,7 +955,7 @@ if st.button("Adjust to Target", type="primary"):
             f"Original comps — {feature_label} (filtered; shows removals if applied)",
             int_ticks=( [0,1] if is_binary else (np.sort(work_filt[x_col].round().astype(int).unique()) if looks_discrete_integer(work_filt[x_col]) else None) ),
             xtick_labels=(["No","Yes"] if is_binary else None),
-            removed_xy=None,  # hide removed markers in batch view
+            removed_xy=(_rx, _ry) if len(_rx) > 0 else None,
             disable_jitter=no_jitter_for_this_feature
         )
         st.pyplot(orig_fig)
@@ -1330,7 +1183,7 @@ else:
             st.metric("Price per +1", f"${s['slope']:,.2f}" if not np.isnan(s['slope']) else "—")
             st.metric("R²", f"{s['r2']:.3f}" if not np.isnan(s['r2']) else "—")
             if not np.isnan(s["median_ppsf"]):
-                st.metric("Median $/sq ft", f"${s['median_ppsf']:,.2f}")
+                st.metric("Median $/sq ft", f"${s["median_ppsf"]:,.2f}")
             st.caption(f"Comps: {s['n']}")
 
     st.subheader("Downloads")
