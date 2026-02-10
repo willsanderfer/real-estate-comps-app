@@ -91,6 +91,15 @@ FEATURE_SYNONYMS = {
     "Garage Spaces": [
         "Garage Spaces","Garage","# Garage Spaces","Garage Y/N","Garage YN","Garage Spots","Garage Stalls"
     ],
+"Site Area": [
+    "Site Area","SiteArea","Lot Size","Lot Area","Lot SqFt","Lot Sq Ft","Lot Square Feet",
+    "Land Area","Parcel Area","Acres","Acreage","Site SqFt","Site Sq Ft"
+],
+"Inground Pool": [
+    "Inground Pool","In-Ground Pool","In Ground Pool","Pool",
+    "Pool Y/N","Pool Yes/No","Has Pool","Swimming Pool","Pool Type"
+]
+
 }
 
 # ===================== DATE/LAT/LON DETECTORS =====================
@@ -154,14 +163,50 @@ def clean_numeric(s: pd.Series) -> pd.Series:
         s = s.astype(str).str.replace(r"[^\d\.\-]", "", regex=True)
     return pd.to_numeric(s, errors="coerce")
 
+SQFT_PER_ACRE = 43560
+
+def normalize_site_area(series: pd.Series, col_name: str) -> pd.Series:
+    """Normalize common site/lot area fields to square feet.
+    - If the column name suggests acres, convert.
+    - Otherwise, apply a light heuristic: if the median is in an acre-like range (<25), treat as acres.
+    """
+    x = clean_numeric(series)
+    name = (col_name or "").lower()
+
+    # Explicit acres in column name
+    if "acre" in name:
+        return x * SQFT_PER_ACRE
+
+    # Heuristic: values look like acres (e.g. 0.25–5.0)
+    med = x.median(skipna=True)
+    if med is not None and med > 0 and med < 25:
+        return x * SQFT_PER_ACRE
+
+    return x
+
 def map_yes_no_to_binary(series: pd.Series) -> pd.Series:
+    # Broad yes/no and feature-text mapping (works for Pool, Basement Y/N, etc.)
     if series.dtype != "object":
         return series
-    s = series.astype(str).str.strip().str.upper()
-    yn = {"Y":1,"YES":1,"TRUE":1,"T":1,"1":1,"N":0,"NO":0,"FALSE":0,"F":0,"0":0}
-    mapped = s.map(yn)
-    out = series.copy()
-    out.loc[mapped.notna()] = mapped.loc[mapped.notna()].astype(int)
+
+    s = series.astype(str).str.strip().str.lower()
+
+    truthy_tokens = [
+        "y","yes","true","t","1",
+        "inground","in ground","in-ground",
+        "pool","swimming","gunite","concrete"
+    ]
+    falsy_tokens = ["n","no","false","f","0","none","na","n/a",""]
+
+    out = pd.Series(np.nan, index=series.index, dtype="float")
+
+    out[s.isin(falsy_tokens)] = 0
+    out[s.apply(lambda v: any(tok in v for tok in truthy_tokens))] = 1
+
+    # numeric fallback (some MLS exports use 0/1)
+    numeric_try = pd.to_numeric(s, errors="coerce")
+    out = out.fillna(numeric_try)
+
     return out
 
 def looks_discrete_integer(s: pd.Series, max_unique=12, tol=0.01) -> bool:
@@ -351,7 +396,7 @@ def make_time_scatter(df: pd.DataFrame, y_col: str, date_col: str, title: str):
         ax.plot(x_line, y_line, linewidth=2, label="Trend")
     ax.set_title(title); ax.set_xlabel(date_col); ax.set_ylabel(y_col)
     ax.grid(axis="y", linestyle="--", color="#e5e5e5", linewidth=0.8); ax.legend()
-    fig.tight_LAYOUT()
+    fig.tight_layout()
     return fig
 
 def key_takeaways_time(pct_per_month, dollar_per_month, r2, n):
@@ -773,7 +818,16 @@ if not x_col:
 # Clean + prep
 work = df[[y_col, x_col]].copy()
 work[y_col] = clean_numeric(work[y_col])
-work[x_col] = clean_numeric(map_yes_no_to_binary(work[x_col]))
+
+# Feature-specific cleaning
+if "pool" in feature_label.lower():
+    # Pools should behave as binary (0/1), even if the MLS column is descriptive text
+    work[x_col] = map_yes_no_to_binary(work[x_col])
+elif "site area" in feature_label.lower() or "lot" in feature_label.lower():
+    # Normalize acres -> sqft when likely
+    work[x_col] = normalize_site_area(work[x_col], x_col)
+else:
+    work[x_col] = clean_numeric(map_yes_no_to_binary(work[x_col]))
 
 # If feature is Garage Spaces — treat blanks as 0
 if "garage" in x_col.lower():
@@ -1183,7 +1237,7 @@ else:
             st.metric("Price per +1", f"${s['slope']:,.2f}" if not np.isnan(s['slope']) else "—")
             st.metric("R²", f"{s['r2']:.3f}" if not np.isnan(s['r2']) else "—")
             if not np.isnan(s["median_ppsf"]):
-                st.metric("Median $/sq ft", f"${s["median_ppsf"]:,.2f}")
+                st.metric("Median $/sq ft", f"${s['median_ppsf']:,.2f}")
             st.caption(f"Comps: {s['n']}")
 
     st.subheader("Downloads")
