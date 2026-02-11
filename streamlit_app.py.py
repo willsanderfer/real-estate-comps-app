@@ -15,6 +15,7 @@ import pydeck as pdk
 from typing import Optional
 
 import io, csv
+import sys
 
 st.set_page_config(page_title="Comparable Adjustment Explorer", page_icon="📈", layout="wide")
 
@@ -99,8 +100,11 @@ FEATURE_SYNONYMS = {
     "Inground Pool","In-Ground Pool","In Ground Pool","Pool",
     "Pool Y/N","Pool Yes/No","Has Pool","Swimming Pool","Pool Type"
 ]
-
-}
+,
+    "Age": [
+            "Year Built","YearBuilt","Yr Built","Built","Built Year","Construction Year",
+            "Age","Property Age","Home Age"
+        ]}
 
 # ===================== DATE/LAT/LON DETECTORS =====================
 def find_first_date_col(df: pd.DataFrame) -> str | None:
@@ -177,6 +181,16 @@ def normalize_site_area(series: pd.Series, col_name: str) -> pd.Series:
     if "acre" in name:
         return x * SQFT_PER_ACRE
 
+def compute_age_from_year_built(series: pd.Series) -> pd.Series:
+    """Convert a Year Built-style column to Age in years, using the current calendar year."""
+    yb = clean_numeric(series)
+    current_year = 2026
+    age = current_year - yb
+    # Remove impossible ages
+    age = age.where((age >= 0) & (age <= 250))
+    return age
+
+
     # Heuristic: values look like acres (e.g. 0.25–5.0)
     med = x.median(skipna=True)
     if med is not None and med > 0 and med < 25:
@@ -247,7 +261,9 @@ def resolve_feature_column(df: pd.DataFrame, label: str) -> str | None:
         "Basement SqFt Finished": {"finished"} | {"fin"} | {"sqft"},
         "Basement Y/N": {"basement"} | {"yn","y/n","yes","no","present","exists","has"},
         "Garage Spaces": {"garage"} | {"space","spaces","stalls","spots"},
-    }.get(label, set())
+    
+    "Age": {"year"} | {"built"} | {"construction"} | {"yr"}
+}.get(label, set())
 
     if label == "Basement SqFt Finished":
         def _is_bg_finished(col: str) -> bool:
@@ -722,7 +738,10 @@ try:
 except Exception as e:
     st.error("Couldn't read the file. Try re-exporting as CSV (comma-delimited) or Excel.")
     st.exception(e)
+    # In Streamlit, st.stop() halts execution. If someone runs this as a plain Python script,
+    # st.stop() may not halt, so also exit hard to avoid downstream NameError.
     st.stop()
+    sys.exit(1)
 
 df.columns = [c.strip() for c in df.columns]
 
@@ -820,7 +839,11 @@ work = df[[y_col, x_col]].copy()
 work[y_col] = clean_numeric(work[y_col])
 
 # Feature-specific cleaning
-if "pool" in feature_label.lower():
+if feature_label.lower() == "age":
+    # Use raw Year Built values on the X-axis (no conversion to age)
+    work[x_col] = clean_numeric(work[x_col])
+elif "pool" in feature_label.lower():
+
     # Pools should behave as binary (0/1), even if the MLS column is descriptive text
     work[x_col] = map_yes_no_to_binary(work[x_col])
 elif "site area" in feature_label.lower() or "lot" in feature_label.lower():
@@ -834,14 +857,16 @@ if "garage" in x_col.lower():
     work[x_col] = work[x_col].fillna(0)
 
 # Drop rows that still have no price
-work = work.dropna(subset=[y_col]).reset_index(drop=False)
+work = work.dropna(subset=[y_col, x_col]).reset_index(drop=False)
 
 if work.empty:
-    st.error("No usable data after cleaning."); st.stop()
+    st.error("No usable data after cleaning. This usually means the selected feature column could not be converted to numbers (all values became blank). Try a different feature or verify the column contents in your export.")
+    st.stop()
 
 # Binary/discrete detection
 uniq = np.sort(work[x_col].dropna().unique())
-is_binary = len(uniq) <= 2 and set(np.unique(uniq).astype(int)) <= {0,1}
+# Treat as binary only when we actually have both 0 and 1 present
+is_binary = (len(uniq) == 2) and (set(np.unique(uniq).astype(int)) == {0, 1})
 intish = looks_discrete_integer(work[x_col]) if not is_binary else True
 if is_binary:
     int_ticks = [0,1]; xtick_labels = ["No","Yes"]
@@ -861,7 +886,12 @@ if date_col:
         global_date_max = all_dates.max()
 
 price_min, price_max = float(work_for_filters[y_col].min()), float(work_for_filters[y_col].max())
-x_min, x_max = float(work_for_filters[x_col].min()), float(work_for_filters[x_col].max())
+x_min = pd.to_numeric(work_for_filters[x_col], errors="coerce").min()
+x_max = pd.to_numeric(work_for_filters[x_col], errors="coerce").max()
+if pd.isna(x_min) or pd.isna(x_max):
+    st.error(f"No usable numeric values were found for the selected feature column: {x_col}.")
+    st.stop()
+x_min, x_max = float(x_min), float(x_max)
 
 with st.expander("Filters", expanded=True):
     c1, c2, c3 = st.columns([1,1,1])
