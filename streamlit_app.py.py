@@ -115,7 +115,11 @@ def find_first_date_col(df: pd.DataFrame) -> str | None:
             continue
         if any(b in name for b in bad_name_snippets):
             continue
-        s = pd.to_datetime(df[c], errors="coerce", infer_datetime_format=True)
+        # pandas 2.x removed infer_datetime_format; use a safe fallback that won't crash on mixed columns
+        try:
+            s = pd.to_datetime(df[c], errors="coerce")
+        except Exception:
+            s = pd.to_datetime(df[c].astype(str), errors="coerce")
         if s.notna().mean() < 0.5:
             continue
         yrs = s.dropna().dt.year
