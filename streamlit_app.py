@@ -185,6 +185,13 @@ def normalize_site_area(series: pd.Series, col_name: str) -> pd.Series:
     if "acre" in name:
         return x * SQFT_PER_ACRE
 
+    # Heuristic: values look like acres (e.g. 0.25-5.0)
+    med = x.median(skipna=True)
+    if med is not None and med > 0 and med < 25:
+        return x * SQFT_PER_ACRE
+
+    return x
+
 def compute_age_from_year_built(series: pd.Series) -> pd.Series:
     """Convert a Year Built-style column to Age in years, using the current calendar year."""
     yb = clean_numeric(series)
@@ -193,14 +200,6 @@ def compute_age_from_year_built(series: pd.Series) -> pd.Series:
     # Remove impossible ages
     age = age.where((age >= 0) & (age <= 250))
     return age
-
-
-    # Heuristic: values look like acres (e.g. 0.25–5.0)
-    med = x.median(skipna=True)
-    if med is not None and med > 0 and med < 25:
-        return x * SQFT_PER_ACRE
-
-    return x
 
 def map_yes_no_to_binary(series: pd.Series) -> pd.Series:
     # Broad yes/no and feature-text mapping (works for Pool, Basement Y/N, etc.)
