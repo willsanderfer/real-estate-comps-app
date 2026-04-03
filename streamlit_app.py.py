@@ -780,7 +780,7 @@ if mode == "Time adjustment":
         st.error("Could not detect a date column (e.g., Close/Sold/Contract Date)."); st.stop()
 
     time_df = df[[y_col, date_col]].copy()
-        time_df[y_col] = clean_numeric(time_df[y_col])
+    time_df[y_col] = clean_numeric(time_df[y_col])
     time_df[date_col] = pd.to_datetime(time_df[date_col], errors="coerce")
     time_df = time_df.dropna(subset=[y_col, date_col]).reset_index(drop=True)
     if time_df.empty:
