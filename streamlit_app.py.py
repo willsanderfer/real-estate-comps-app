@@ -260,15 +260,21 @@ def pick_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
 def _tokens(s: str) -> set[str]:
     return set(str(s).lower().replace("_"," ").replace("-"," ").replace(".","").split())
 
-def _viable_numeric(series: pd.Series, min_numeric_share=0.6) -> bool:
+def _viable_numeric(series: pd.Series, min_numeric_share=0.6, allow_constant: bool = False) -> bool:
     s = clean_numeric(map_yes_no_to_binary(series))
     share = s.notna().mean() if len(s) else 0
-    return share >= min_numeric_share and np.nanstd(s) > 0
+    if share < min_numeric_share:
+        return False
+    if allow_constant:
+        return s.notna().any()
+    return np.nanstd(s) > 0
 
 def resolve_feature_column(df: pd.DataFrame, label: str) -> str | None:
     if label not in FEATURE_SYNONYMS:
         return None
     syns = FEATURE_SYNONYMS[label]
+    binary_like_label = label in {"Basement Y/N", "Inground Pool"}
+    min_share = 0.2 if binary_like_label else 0.6
     cols = list(df.columns)
 
     required = {
@@ -306,24 +312,24 @@ def resolve_feature_column(df: pd.DataFrame, label: str) -> str | None:
 
 
     for s in syns:
-        if s in cols and _viable_numeric(df[s]): 
+        if s in cols and _viable_numeric(df[s], min_numeric_share=min_share, allow_constant=binary_like_label):
             return s
     lower_map = {c.lower(): c for c in cols}
     for s in syns:
-        if s.lower() in lower_map and _viable_numeric(df[lower_map[s.lower()]]):
+        if s.lower() in lower_map and _viable_numeric(df[lower_map[s.lower()]], min_numeric_share=min_share, allow_constant=binary_like_label):
             return lower_map[s.lower()]
 
     # keep candidates that have at least one relevant token for the selected feature
     cand = [c for c in cols if (not required) or (required & _tokens(c))] if required else cols
     cand = sorted(cand, key=lambda c: _score(c), reverse=True)
     for c in cand:
-        if _viable_numeric(df[c]):
+        if _viable_numeric(df[c], min_numeric_share=min_share, allow_constant=binary_like_label):
             return c
 
     for s in syns:
         m = get_close_matches(s, cols, n=3, cutoff=0.82)
         for c in m:
-            if (not required or required & _tokens(c)) and _viable_numeric(df[c]):
+            if (not required or required & _tokens(c)) and _viable_numeric(df[c], min_numeric_share=min_share, allow_constant=binary_like_label):
                 return c
     return None
 
@@ -910,6 +916,7 @@ if pd.isna(x_min) or pd.isna(x_max):
     st.error(f"No usable numeric values were found for the selected feature column: {x_col}.")
     st.stop()
 x_min, x_max = float(x_min), float(x_max)
+x_has_range = x_max > x_min
 
 with st.expander("Filters", expanded=True):
     c1, c2, c3 = st.columns([1,1,1])
@@ -919,11 +926,15 @@ with st.expander("Filters", expanded=True):
             value=(price_min, price_max), step=max(1.0, (price_max-price_min)/200.0)
         )
     with c2:
-        x_rng = st.slider(
-            f"{x_col} range", min_value=x_min, max_value=x_max,
-            value=(x_min, x_max), step=(1.0 if is_binary else max(1.0, (x_max-x_min)/200.0)),
-            disabled=is_binary
-        )
+        if x_has_range:
+            x_rng = st.slider(
+                f"{x_col} range", min_value=x_min, max_value=x_max,
+                value=(x_min, x_max), step=(1.0 if is_binary else max(1.0, (x_max-x_min)/200.0)),
+                disabled=is_binary
+            )
+        else:
+            x_rng = (x_min, x_max)
+            st.caption(f"{x_col} has a single value in this file ({x_min:,.2f}).")
     with c3:
         if date_col and global_date_min is not None and global_date_max is not None:
             date_rng = st.date_input(
