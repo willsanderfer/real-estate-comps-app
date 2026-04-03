@@ -520,7 +520,7 @@ def make_scatter_figure(
             if removed_xy is not None:
                 jw = 0.0
             rng = np.random.default_rng(42)
-                        x_plot = x_true.astype(float) + rng.uniform(-jw, jw, size=len(x_true))
+            x_plot = x_true.astype(float) + rng.uniform(-jw, jw, size=len(x_true))
     else:
         x_plot = x_true.astype(float)
 
