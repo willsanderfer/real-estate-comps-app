@@ -115,11 +115,7 @@ def find_first_date_col(df: pd.DataFrame) -> str | None:
             continue
         if any(b in name for b in bad_name_snippets):
             continue
-        # pandas 2.x removed infer_datetime_format; use a safe fallback that won't crash on mixed columns
-        try:
-            s = pd.to_datetime(df[c], errors="coerce")
-        except Exception:
-            s = pd.to_datetime(df[c].astype(str), errors="coerce")
+        s = pd.to_datetime(df[c], errors="coerce", infer_datetime_format=True)
         if s.notna().mean() < 0.5:
             continue
         yrs = s.dropna().dt.year
@@ -185,13 +181,6 @@ def normalize_site_area(series: pd.Series, col_name: str) -> pd.Series:
     if "acre" in name:
         return x * SQFT_PER_ACRE
 
-    # Heuristic: values look like acres (e.g. 0.25-5.0)
-    med = x.median(skipna=True)
-    if med is not None and med > 0 and med < 25:
-        return x * SQFT_PER_ACRE
-
-    return x
-
 def compute_age_from_year_built(series: pd.Series) -> pd.Series:
     """Convert a Year Built-style column to Age in years, using the current calendar year."""
     yb = clean_numeric(series)
@@ -200,6 +189,14 @@ def compute_age_from_year_built(series: pd.Series) -> pd.Series:
     # Remove impossible ages
     age = age.where((age >= 0) & (age <= 250))
     return age
+
+
+    # Heuristic: values look like acres (e.g. 0.25–5.0)
+    med = x.median(skipna=True)
+    if med is not None and med > 0 and med < 25:
+        return x * SQFT_PER_ACRE
+
+    return x
 
 def map_yes_no_to_binary(series: pd.Series) -> pd.Series:
     # Broad yes/no and feature-text mapping (works for Pool, Basement Y/N, etc.)
