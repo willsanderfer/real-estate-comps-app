@@ -258,7 +258,7 @@ def pick_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
     return m[0] if m else None
 
 def _tokens(s: str) -> set[str]:
-    return set(str(s).lower().replace("_"," ").replace("-"," ").replace(".","").split())
+        return set(str(s).lower().replace("_"," ").replace("-"," ").replace(".","").split())
 
 def _viable_numeric(series: pd.Series, min_numeric_share=0.6) -> bool:
     s = clean_numeric(map_yes_no_to_binary(series))
@@ -277,7 +277,8 @@ def resolve_feature_column(df: pd.DataFrame, label: str) -> str | None:
         "Basement SqFt Finished": {"finished"} | {"fin"} | {"sqft"},
         "Basement Y/N": {"basement"} | {"yn","y/n","yes","no","present","exists","has"},
         "Garage Spaces": {"garage"} | {"space","spaces","stalls","spots"},
-    
+        "Site Area": {"site","lot","acre","area"},
+        "Inground Pool": {"pool","inground","swimming"},
     "Age": {"year"} | {"built"} | {"construction"} | {"yr"}
 }.get(label, set())
 
@@ -312,7 +313,8 @@ def resolve_feature_column(df: pd.DataFrame, label: str) -> str | None:
         if s.lower() in lower_map and _viable_numeric(df[lower_map[s.lower()]]):
             return lower_map[s.lower()]
 
-    cand = [c for c in cols if (not required) or required.issubset(_tokens(c))] if required else cols
+    # keep candidates that have at least one relevant token for the selected feature
+    cand = [c for c in cols if (not required) or (required & _tokens(c))] if required else cols
     cand = sorted(cand, key=lambda c: _score(c), reverse=True)
     for c in cand:
         if _viable_numeric(df[c]):
@@ -518,7 +520,7 @@ def make_scatter_figure(
             if removed_xy is not None:
                 jw = 0.0
             rng = np.random.default_rng(42)
-            x_plot = x_true.astype(float) + rng.uniform(-jw, jw, size=len(x_true))
+                        x_plot = x_true.astype(float) + rng.uniform(-jw, jw, size=len(x_true))
     else:
         x_plot = x_true.astype(float)
 
@@ -778,7 +780,7 @@ if mode == "Time adjustment":
         st.error("Could not detect a date column (e.g., Close/Sold/Contract Date)."); st.stop()
 
     time_df = df[[y_col, date_col]].copy()
-    time_df[y_col] = clean_numeric(time_df[y_col])
+        time_df[y_col] = clean_numeric(time_df[y_col])
     time_df[date_col] = pd.to_datetime(time_df[date_col], errors="coerce")
     time_df = time_df.dropna(subset=[y_col, date_col]).reset_index(drop=True)
     if time_df.empty:
