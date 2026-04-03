@@ -1269,7 +1269,7 @@ else:
         )
         st.pyplot(base_fig)
     with c2:
-        st.subheader("Current stats (filtered)")
+        st.subheader(" ")
         if is_binary:
             bs = compute_binary_stats(work_filt, y_col, x_col)
             if bs["has_both"]:
