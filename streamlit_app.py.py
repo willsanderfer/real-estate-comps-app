@@ -277,7 +277,8 @@ def resolve_feature_column(df: pd.DataFrame, label: str) -> str | None:
         "Basement SqFt Finished": {"finished"} | {"fin"} | {"sqft"},
         "Basement Y/N": {"basement"} | {"yn","y/n","yes","no","present","exists","has"},
         "Garage Spaces": {"garage"} | {"space","spaces","stalls","spots"},
-    
+        "Site Area": {"site","lot","acre","area"},
+        "Inground Pool": {"pool","inground","swimming"},
     "Age": {"year"} | {"built"} | {"construction"} | {"yr"}
 }.get(label, set())
 
@@ -312,7 +313,8 @@ def resolve_feature_column(df: pd.DataFrame, label: str) -> str | None:
         if s.lower() in lower_map and _viable_numeric(df[lower_map[s.lower()]]):
             return lower_map[s.lower()]
 
-    cand = [c for c in cols if (not required) or required.issubset(_tokens(c))] if required else cols
+    # keep candidates that have at least one relevant token for the selected feature
+    cand = [c for c in cols if (not required) or (required & _tokens(c))] if required else cols
     cand = sorted(cand, key=lambda c: _score(c), reverse=True)
     for c in cand:
         if _viable_numeric(df[c]):
