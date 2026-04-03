@@ -107,6 +107,22 @@ FEATURE_SYNONYMS = {
         ]}
 
 # ===================== DATE/LAT/LON DETECTORS =====================
+def _coerce_datetime_series(series: pd.Series) -> pd.Series:
+    """Parse dates across pandas versions and mixed real-world formats."""
+    try:
+        # pandas >=2.0 supports mixed parsing for columns with varied date formats
+        parsed = pd.to_datetime(series, errors="coerce", format="mixed")
+    except TypeError:
+        # fallback for older pandas versions
+        parsed = pd.to_datetime(series, errors="coerce")
+
+    # fallback pass: for mostly-failed parses, retry with day-first interpretation
+    if parsed.notna().mean() < 0.5:
+        parsed_dayfirst = pd.to_datetime(series, errors="coerce", dayfirst=True)
+        if parsed_dayfirst.notna().mean() > parsed.notna().mean():
+            parsed = parsed_dayfirst
+    return parsed
+
 def find_first_date_col(df: pd.DataFrame) -> str | None:
     bad_name_snippets = ["list number","mls#","mls #","mls id","listing id","list no","record id","id"]
     for c in df.columns:
@@ -115,7 +131,7 @@ def find_first_date_col(df: pd.DataFrame) -> str | None:
             continue
         if any(b in name for b in bad_name_snippets):
             continue
-        s = pd.to_datetime(df[c], errors="coerce", infer_datetime_format=True)
+        s = _coerce_datetime_series(df[c])
         if s.notna().mean() < 0.5:
             continue
         yrs = s.dropna().dt.year
